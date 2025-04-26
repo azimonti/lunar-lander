@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 '''
 /******************/
 /*  mod_config.py */
@@ -66,8 +65,8 @@ cfg = SimpleNamespace(
 lander_cfg = lander_cfg_1
 
 game_cfg = SimpleNamespace(
-    # initial position [x, y] (start on takeoff pad)
-    x0=np.array([55.0, cfg.width - lander_cfg.height]),
+    # initial position [x, y] (start on takeoff pad, just above terrain)
+    x0=np.array([52.0, cfg.height - lander_cfg.height - 52]),
     v0=np.array([0.0, 0.0]),    # initial velocity [vx, vy]
     a0=np.array([0.0, 0.0]),    # initial acceleration [ax, ay]
     spad_x1=50,                 # takeoff pad left boundary (x1)
@@ -86,7 +85,6 @@ planet_cfg = SimpleNamespace(
     mu_x=0.01,                  # friction in the x direction
     mu_y=0.01,                  # friction in the y direction
 )
-
 
 
 if __name__ == '__main__':
