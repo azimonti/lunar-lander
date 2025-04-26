@@ -6,7 +6,7 @@ A fully-playable Lunar Landing game in Python. Control the lander manually or en
 
 - Manual control via keyboard,
 - Neural network autoplay (reinforcement learning-based),
-- Realistic moon surface and physics simulation,
+- Realistic physics simulation,
 - Modular and extensible codebase.
 
 ## Requirements
@@ -22,11 +22,11 @@ To get started with the control feedback:
 
 1. Clone the repository:
    ```
-   git clone https://github.com/azimonti/inverted-pendulum
+   git clone https://github.com/azimonti/lunar-lander
    ```
 2. Navigate to the repository directory:
    ```
-   cd inverted-pendulum
+   cd lunar-lander
    ```
 3. Initialize and update the submodules:
   ```
@@ -44,8 +44,8 @@ Further update of the submodule can be done with the command:
   # optional steps if dependencies are not installed globally
   # ./manage_dependency_libraries.sh -d
   # ./manage_dependency_libraries.sh -b
-  ./cbuild.sh --build-type Debug --cmake-params "-DCPP_LIBNN=ON"
-  ./cbuild.sh --build-type Release --cmake-params "-DCPP_LIBNN=ON"
+  ./cbuild.sh --build-type Debug --cmake-params "-DCPP_LIBNN=ON -DCPP_PYTHON_BINDINGS=ON"
+  ./cbuild.sh --build-type Release --cmake-params "-DCPP_LIBNN=ON -DCPP_PYTHON_BINDINGS=ON"
   cd ../..
   ```
 
@@ -62,9 +62,10 @@ Further update of the submodule can be done with the command:
   ```
 
 TODO
-[ ] Create link wih ma-libs using pybind11
-[ ] Add Neural networks training with fixed start / landing
-[ ] Make start / landing area random
+
+- [ ] Create link wih ma-libs using pybind11
+- [ ] Add Neural networks training with fixed start / landing
+- [ ] Make start / landing area random
 
 ## License
 
