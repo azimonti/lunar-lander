@@ -1,0 +1,3 @@
+[submodule "externals/ma-libs"]
+	path = externals/ma-libs
+	url = https://github.com/azimonti/ma-libs.git
