@@ -38,7 +38,12 @@ Further update of the submodule can be done with the command:
   git submodule update --remote
   ```
 
-4. Compile the libraries in `ma-libs`
+4. Install required Python dependencies (a virtual environment can be created running the script `create_env.sh`):
+   ```
+   pip install -r requirements.txt
+   ```
+
+5. Compile the libraries in `ma-libs`
   ```
   cd externals/ma-libs
   # optional steps if dependencies are not installed globally
@@ -51,21 +56,13 @@ Further update of the submodule can be done with the command:
 
   If any error or missing dependencies please look at the instructions [here](https://github.com/azimonti/ma-libs)
 
-4. Install required Python dependencies (a virtual environment can be created running the script `create_env.sh`):
-   ```
-   pip install -r requirements.txt
-   ```
 
-5. Run the program
+6. Run the program
   ```
-  python main.py
+  python main.py --mode=play     # default - user plays the game
+  python main.py --mode=nn_train # optional --continue for training the neural network
+  python main.py --mode=nn_play  # nn is playing the game using the last save neural network
   ```
-
-TODO
-
-- [ ] Create link wih ma-libs using pybind11
-- [ ] Add Neural networks training with fixed start / landing
-- [ ] Make start / landing area random
 
 ## License
 

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 '''
 /*********************/
 /*  game_logic.py    */
@@ -12,11 +11,17 @@ from mod_config import cfg, game_cfg as gcfg, planet_cfg as pcfg, \
 
 
 class GameLogic:
-    def __init__(self):
+    def __init__(self, no_print=False):
         self.reset()
         # Constants from config
-        self.landing_pad_center_x = (gcfg.lpad_x1 + gcfg.lpad_x2) / 2
+        self.landing_pad_center_x = gcfg.lpad_x1 + gcfg.lpad_width / 2
         self.landing_pad_y = gcfg.pad_y1  # Using top boundary as reference
+        self.no_print = no_print
+
+    def p(self, text):
+        if self.no_print:
+            return
+        print(text)
 
     def reset(self):
         """Resets the game state to the initial configuration."""
@@ -98,7 +103,8 @@ class GameLogic:
             self.landed = True
 
             on_landing_pad = (self.x >= gcfg.lpad_x1 and
-                              self.x + lcfg.width <= gcfg.lpad_x2)
+                              self.x + lcfg.width <= (gcfg.lpad_x1
+                                                      + gcfg.lpad_width))
             safe_speed = (abs(self.vx) < abs(gcfg.max_vx) and
                           abs(self.vy) < abs(gcfg.max_vy))
 
@@ -106,7 +112,7 @@ class GameLogic:
                 self.landed_successfully = True
                 self.vx = 0  # Stop movement on successful landing
                 self.vy = 0
-                print("GameLogic: Successful landing!")
+                self.p("GameLogic: Successful landing!")
             else:
                 self.crashed = True
                 self.landed_successfully = False
@@ -114,13 +120,13 @@ class GameLogic:
                 self.vx = 0
                 self.vy = 0
                 if not on_landing_pad:
-                    print("GameLogic: Crashed - outside landing area!")
+                    self.p("GameLogic: Crashed - outside landing area!")
                 if abs(self.vx) >= abs(gcfg.max_vx):
-                    print("GameLogic: Crashed - excessive horizontal speed! "
-                          f"(|{self.vx:.2f}| >= {gcfg.max_vx})")
+                    self.p("GameLogic: Crashed - excessive horizontal speed! "
+                           f"(|{self.vx:.2f}| >= {gcfg.max_vx})")
                 if abs(self.vy) >= abs(gcfg.max_vy):
-                    print("GameLogic: Crashed - excessive vertical speed! ("
-                          f"|{self.vy:.2f}| >= {gcfg.max_vy})")
+                    self.p("GameLogic: Crashed - excessive vertical speed! ("
+                           f"|{self.vy:.2f}| >= {gcfg.max_vy})")
 
     def update(self, action: int):
         """Performs one time step of the game simulation.

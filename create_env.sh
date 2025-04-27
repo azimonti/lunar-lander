@@ -1,21 +1,29 @@
 #!/bin/bash
-# CREATE A LOCAL ENV USING PYTHON 3.11
-MYVENV="venv"
 
-# Check if python3.11 exists
-if command -v python3.11 &> /dev/null
-then
-    echo "Creating virtual environment using python3.11..."
-    # Use python3.11 to create the virtual environment
-    python3.11 -m venv $MYVENV
+unameOut="$(uname -s)"
+case "${unameOut}" in
+	Linux*)		MACHINE="$(lsb_release -is)";;
+	Darwin*)	MACHINE=mac;;
+	CYGWIN*)	MACHINE=cygwin;;
+	MINGW*)		MACHINE=mingw;;
+	*)		MACHINE="UNKNOWN:${unameOut}"
+esac
+
+MACHINE=$(echo "${MACHINE}" | awk '{print tolower($0)}')
+
+if [ "$MACHINE" == "mingw" ]; then
+	SCRIPTDIR=Scripts
+	PYTHON=python
 else
-    echo "Error: python3.11 command not found. Cannot create venv."
-    exit 1
+	SCRIPTDIR=bin
+	PYTHON=$(which python3)
 fi
 
+MYVENV="venv"
+"${PYTHON}" -u -m venv "${MYVENV}"
 # Activate the new environment
 echo "Activating the virtual environment..."
-source $MYVENV/bin/activate
+source "${MYVENV}/${SCRIPTDIR}/activate"
 
 # Install dependencies (using the pip from the venv)
 echo "Installing requirements..."

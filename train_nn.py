@@ -5,113 +5,275 @@
 /*   2025/04/27   */
 /******************/
 '''
+import argparse
 import numpy as np
+import os
+import sys
+import shutil
+
+from mod_config import nn_config as cfg, game_cfg
 from game_logic import GameLogic
 
-# --- Placeholder for NN Interaction ---
-# These functions will interact with your C++ NN library eventually
+cwd = os.getcwd()
+build_dir = os.path.join(cwd, "./externals/ma-libs/build")
+
+if "DEBUG" in os.environ:
+    build_path = os.path.join(build_dir, "Debug")
+else:
+    build_path = os.path.join(build_dir, "Release")
+
+# Add the appropriate build path to sys.path
+sys.path.append(os.path.realpath(build_path))
+
+# Try importing the cpp_nn_py module
+try:
+    import cpp_nn_py as cpp_nn_py
+except ModuleNotFoundError as e:
+    print(f"Error: {e}")
 
 
-def initialize_nn():
-    """Placeholder to initialize the Neural Network."""
-    print("NN Placeholder: Initializing Network...")
-    # TODO: Load or initialize your C++ model here
-    pass
+class NeuralNetwork():
+    def __init__(self):
+        self._net = None
+        self._nGen = 0
+        self._nnsize = None
+        self._game_env = None  # Can be initialized later if needed per member
+        pass
 
+    def init(self):
+        if cfg.save_nn:
+            # create directory if it doesn't exist
+            os.makedirs(cfg.save_path_nn, exist_ok=True)
+        # GameLogic expects 7 inputs and 4 outputs
+        self._nnsize = [7] + cfg.hlayers + [4]
 
-def get_nn_action(state: np.ndarray) -> int:
-    """Placeholder function to get action from the NN."""
-    # TODO: Replace with actual NN inference call using the state vector
-    # The state vector format is defined in GameLogic.get_state()
-    # Expected output: An integer action (0: Noop, 1: Up, 2: Left, 3: Right)
-    # print(f"NN Placeholder: Received state shape: {state.shape}") # Debug
-    action = np.random.randint(0, 4)  # Example: random action
-    # print(f"NN Placeholder: Returning action: {action}") # Debug
-    return action
+        self._net = cpp_nn_py.ANN_MLP_GA_double(
+            self._nnsize, cfg.seed, cfg.population_size,
+            cfg.top_individuals, cfg.activation_id, cfg.elitism)
 
+        self._net.SetName(cfg.name)
+        self._net.SetMixed(cfg.mixed_population)
+        self._net.CreatePopulation(True)
+        self._nGen = 0  # Start from generation 0 if initializing
 
-def train_nn_batch(batch):
-    """Placeholder function to train the NN on a batch of experiences."""
-    # TODO: Implement the training step using data from the replay buffer
-    print(f"NN Placeholder: Training on batch of size {len(batch)}...")
-    pass
+    def load(self, step='last'):
+        self._net = cpp_nn_py.ANN_MLP_GA_double()
+        self._net.SetName(cfg.name)
+        if step == 'last':
+            filename = f"{cfg.name}_last.hd5"
+        else:
+            filename = f"{cfg.name}_{step}.hd5"
 
+        full_path = os.path.join(cfg.save_path_nn, filename)
+        self._net.Deserialize(full_path)
+        # Get current epoch/generation from loaded net
+        self._nGen = self._net.GetEpochs()
+        # GameLogic expects 7 inputs and 4 outputs
+        self._nnsize = [7] + cfg.hlayers + [4]
+        if cfg.verbose:
+            print(f"Loading network from: {full_path} "
+                  f"(Generation {self._nGen})")
 
-def save_nn_model(path="lander_model.pth"):
-    """Placeholder function to save the trained NN model."""
-    # TODO: Implement saving the model state
-    print(f"NN Placeholder: Saving model to {path}...")
-    pass
-# --- End Placeholder ---
+    def save(self):
+        """Saves the network state and creates a _last copy."""
+        # Construct the base filename
+        base_filename_part = f"{cfg.name}"
+        if not cfg.overwrite:
+            base_filename_part += f"_{self._nGen}"
+        filename = f"{base_filename_part}.hd5"
+        full_path = os.path.join(cfg.save_path_nn, filename)
 
+        # Construct the "_last" filename
+        last_filename = f"{cfg.name}_last.hd5"
+        last_full_path = os.path.join(cfg.save_path_nn, last_filename)
 
-def run_training_loop():
-    """Runs the NN training process (no GUI)."""
-    print("\n--- Starting NN Training Mode (No GUI) ---")
-    logic = GameLogic()
-    initialize_nn()  # Initialize NN model/library
+        if os.path.exists(full_path):
+            try:
+                os.remove(full_path)
+            except OSError as e:
+                print(f"Error removing existing file {full_path}: {e}")
 
-    # --- Training Parameters (Example) ---
-    num_episodes = 50  # Number of episodes to train
-    max_steps_per_episode = 1000  # Max steps before ending episode
-    replay_buffer_capacity = 10000  # Max experiences to store
-    batch_size = 64  # Number of experiences to sample for training
-    training_start_buffer_size = 1000  # Start training only after buffer
-    # --- End Training Parameters ---
+        # Serialize the network
+        try:
+            self._net.Serialize(full_path)
+            if cfg.verbose:
+                print(f"Network serialized to: {full_path}")
+            # Create the "_last" copy
+            try:
+                shutil.copy2(full_path, last_full_path)
+                if cfg.verbose:
+                    print(f"Copied network state to: {last_full_path}")
+            except OSError as e:
+                print(f"Error copying {full_path} to {last_full_path}: {e}")
 
-    replay_buffer = []  # Simple list as replay buffer for now
+        except Exception as e:
+            print(f"Error during network serialization to {full_path}: {e}")
 
-    for episode in range(num_episodes):
-        logic.reset()
-        state = logic.get_state()
-        total_reward = 0
-        done = False
-        step = 0
+    def _calculate_fitness(self, game_sim: GameLogic, steps_taken: int) \
+            -> float:
+        """Calculates fitness score for a completed game simulation.
+           Lower score is better.
+        """
+        fitness = 0.0
 
-        while not done and step < max_steps_per_episode:
-            # 1. Get action from NN
-            # Add exploration (e.g., epsilon-greedy)
-            epsilon = max(0.01, 0.99 ** episode)  # Example epsilon decay
-            if np.random.rand() < epsilon:
-                action = np.random.randint(0, 4)  # Explore: random action
-            else:
-                action = get_nn_action(state)  # Exploit: use NN prediction
+        # Base penalty for steps taken (encourages efficiency)
+        fitness += steps_taken * 0.1
 
-            # 2. Update game logic
-            next_state, reward, done = logic.update(action)
-            total_reward += reward
+        # Distance penalty (applied more heavily at the end)
+        dist_x = abs(game_sim.x - game_sim.landing_pad_center_x)
+        dist_y = abs(game_sim.y - game_sim.landing_pad_y)
+        # Scale distance penalty - higher if further away
+        fitness += (dist_x + dist_y) * 0.5
 
-            # 3. Store experience in replay buffer
-            experience = (state, action, reward, next_state, done)
-            replay_buffer.append(experience)
-            # Keep buffer size limited
-            if len(replay_buffer) > replay_buffer_capacity:
-                replay_buffer.pop(0)  # Remove oldest experience
+        if game_sim.landed_successfully:
+            fitness -= 1000.0  # Big reward (negative penalty)
+            # Bonus for remaining fuel
+            fitness -= game_sim.fuel * 2.0
+        elif game_sim.crashed:
+            fitness += 500.0  # Penalty for crashing
+            # Increase penalty based on final velocity magnitude
+            final_v_mag = np.sqrt(game_sim.vx**2 + game_sim.vy**2)
+            fitness += final_v_mag * 10.0
+        elif game_sim.fuel <= 0 and not game_sim.landed:
+            fitness += 250.0  # Penalty for running out of fuel mid-air
 
-            # 4. Perform training step (if buffer is large enough)
-            if len(replay_buffer) >= training_start_buffer_size and \
-                    step % 4 == 0:  # Train every few steps
-                # Sample a mini-batch from the replay buffer
-                batch_indices = np.random.choice(len(replay_buffer),
-                                                 batch_size, replace=False)
-                mini_batch = [replay_buffer[i] for i in batch_indices]
-                train_nn_batch(mini_batch)  # Train on the sampled batch
+        # Add small penalty based on final velocity if not landed successfully
+        if not game_sim.landed_successfully:
+            final_v_mag = np.sqrt(game_sim.vx**2 + game_sim.vy**2)
+            fitness += final_v_mag * 1.0
 
-            state = next_state
-            step += 1
+        return fitness
 
-        print(f"Episode {episode+1}/{num_episodes} finished after {step}"
-              f"steps. Total Reward: {total_reward:.2f}, Epsilon: "
-              f"{epsilon:.3f}")
-        render_info = logic.get_render_info()
-        print(f"  Result: Landed={render_info['landed']}, "
-              f"Crashed={render_info['crashed']}, "
-              f"Success={render_info['landed_successfully']}")
+    def train(self):
+        if self._net is None:
+            print("Error: Network not initialized or loaded.")
+            return
 
-    print("--- Training Finished ---")
-    save_nn_model()  # Save the trained model
+        print(f"Starting training for {cfg.epochs} generations...")
+        print(f"Population size: {cfg.population_size}, "
+              f"Top performers: {cfg.top_individuals}")
+        print(f"Network structure: {self._nnsize}")
+
+        num_outputs = self._nnsize[-1]
+        population_size = self._net.GetPopSize()  # Use getter
+
+        for gen in range(self._nGen, self._nGen + cfg.epochs):
+            fitness_scores = np.zeros(population_size, dtype=np.float64)
+            all_steps = []  # Track steps per member for info
+
+            print(f"\n--- Generation {gen + 1} ---")
+
+            for member_id in range(population_size):
+                game_sim = GameLogic(no_print=True)
+                state = game_sim.get_state()
+                done = False
+                current_fitness_penalty = 0.0  # Accumulate penalties
+                steps = 0
+
+                while not done and steps < game_cfg.max_steps:
+                    inputs = np.array(state, dtype=np.float64)
+                    outputs = np.zeros(num_outputs, dtype=np.float64)
+
+                    # Get action from NN
+                    self._net.feedforward(inputs, outputs, member_id, False)
+                    action = np.argmax(outputs)
+
+                    # Update game state
+                    next_state, reward, done = game_sim.update(action)
+
+                    # --- Optional: Add small penalties during the run ---
+                    # Penalty for distance from pad center
+                    dist_x = abs(game_sim.x - game_sim.landing_pad_center_x)
+                    dist_y = abs(game_sim.y - game_sim.landing_pad_y)
+                    current_fitness_penalty += (dist_x + dist_y) * 0.001
+                    # Penalty for using fuel (if action > 0)
+                    # current_fitness_penalty += (action > 0) * 0.01
+                    # ----------------------------------------------------
+
+                    state = next_state
+                    steps += 1
+
+                    if done:
+                        break
+
+                # Calculate final fitness after episode ends
+                final_fitness = self._calculate_fitness(game_sim, steps)
+                fitness_scores[member_id] = final_fitness + \
+                    current_fitness_penalty
+                all_steps.append(steps)
+
+            # Sort fitness scores (ascending, lower is better) and get indices
+            sorted_indices = np.argsort(fitness_scores)
+
+            # Update NN weights and biases based on sorted fitness
+            self._net.UpdateWeightsAndBiases(sorted_indices)
+
+            # Create the next population
+            self._net.CreatePopulation(cfg.elitism)
+
+            # Update internal epoch counter in the C++ object
+            self._net.UpdateEpochs(1)  # Increment epoch by 1
+            self._nGen = self._net.GetEpochs()  # Sync python counter
+
+            # Print generation summary
+            best_fitness = fitness_scores[sorted_indices[0]]
+            avg_fitness = np.mean(fitness_scores)
+            avg_steps = np.mean(all_steps)
+            print(f"Generation {self._nGen} complete.")
+            print(
+                f"  Best Fitness: {best_fitness:.4f} (Member "
+                f"{sorted_indices[0]})")
+            print(f"  Avg Fitness:  {avg_fitness:.4f}")
+            print(f"  Avg Steps:    {avg_steps:.1f}")
+
+            # Save network periodically
+            if cfg.save_nn and (self._nGen % cfg.save_interval == 0 or
+                                gen == self._nGen + cfg.epochs - 1):
+                self.save()
+
+        print("\nTraining finished.")
+
+    def get_action(self, current_state: np.ndarray) -> int:
+        """Gets the action from the NN based on the current state."""
+        if self._net is None:
+            print("Error: Network not loaded or initialized.")
+            # Return a default action (e.g., Noop) or raise an error
+            return 0
+
+        if self._nnsize is None:
+            print("Error: Network size not determined (load network first).")
+            return 0
+
+        num_outputs = self._nnsize[-1]
+        inputs = np.array(current_state, dtype=np.float64)
+        outputs = np.zeros(num_outputs, dtype=np.float64)
+
+        # Use member_id 0 - assuming the loaded network represents the best
+        # or the result of the population evolution.
+        # The GA manages this internally.
+        # singleReturn=False as per the pybind definition
+        try:
+            self._net.feedforward(inputs, outputs, 0, False)
+            action = np.argmax(outputs)
+            return action
+        except Exception as e:
+            print(f"Error during feedforward: {e}")
+            return 0  # Return default action on error
 
 
 if __name__ == '__main__':
-    # Allow running training directly
-    run_training_loop()
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        '--continue', dest="cont", action='store_true',
+        default=False, help="Continue training from checkpoint")
+    parser.add_argument(
+        '--step', type=int, default=0, help="Checkpoint step to load")
+    args = parser.parse_args()
+
+    NN = NeuralNetwork()
+
+    if args.cont:
+        NN.load(args.step)
+    else:
+        NN.init()
+    NN.train()  # Start training
