@@ -1,3 +1,5 @@
+h5py>=3.13.0
 numpy>=2.0.2
+pybind11>=2.13.6
 pygame>=2.6.1
 scipy>=1.13.1
