@@ -167,18 +167,15 @@ class GameLogic:
             self.vy / gcfg.max_vy,
             dist_target_x / cfg.width,      # Normalized distance X
             dist_target_y / cfg.height,     # Normalized distance Y
-            self.fuel / lcfg.max_fuel,      # Normalized Fuel
-            # Add normalized vertical acceleration (ay)
-            self.ay / pcfg.g if pcfg.g != 0 else self.ay
+            self.fuel / lcfg.max_fuel      # Normalized Fuel
         ], dtype=float)
         # Ensure vx/vy/ay normalization doesn't cause issues
         # if max speeds or gravity are very small or zero
         # Clip normalized velocity to avoid extremes
         state[0] = np.clip(state[0], -2, 2)
         state[1] = np.clip(state[1], -2, 2)
-        state[2] = np.clip(state[2], -2, 2)
-        state[3] = np.clip(state[3], -2, 2)
-
+        state[2] = np.clip(state[2], -5, 5)
+        state[3] = np.clip(state[3], -5, 5)
         return state
 
     def get_render_info(self) -> dict:

@@ -44,8 +44,8 @@ class NeuralNetwork():
         if cfg.save_nn:
             # create directory if it doesn't exist
             os.makedirs(cfg.save_path_nn, exist_ok=True)
-        # GameLogic expects 6 inputs and 4 outputs
-        self._nnsize = [6] + cfg.hlayers + [4]
+        # GameLogic expects 5 inputs and 4 outputs
+        self._nnsize = [5] + cfg.hlayers + [4]
 
         self._net = cpp_nn_py.ANN_MLP_GA_double(
             self._nnsize, cfg.seed, cfg.population_size,
@@ -69,7 +69,7 @@ class NeuralNetwork():
         # Get current epoch/generation from loaded net
         self._nGen = self._net.GetEpochs()
         # GameLogic expects 8 inputs and 4 outputs
-        self._nnsize = [6] + cfg.hlayers + [4]
+        self._nnsize = [5] + cfg.hlayers + [4]
         if cfg.verbose:
             print(f"Loading network from: {full_path} "
                   f"(Generation {self._nGen})")
