@@ -1,18 +1,18 @@
 '''
-/******************/
-/*  train_nn.py   */
-/*  Version 1.0   */
-/*   2025/04/27   */
-/******************/
+/*******************/
+/* mod_nn_train.py */
+/*  Version 1.0    */
+/*   2025/04/27    */
+/*******************/
 '''
-import argparse
 import numpy as np
 import os
 import sys
 import shutil
 
-from mod_config import nn_config as cfg, game_cfg
-from game_logic import GameLogic
+# Import reset_pad_positions function
+from mod_config import nn_config as cfg, game_cfg, reset_pad_positions
+from mod_game_logic import GameLogic
 
 cwd = os.getcwd()
 build_dir = os.path.join(cwd, "./externals/ma-libs/build")
@@ -44,8 +44,8 @@ class NeuralNetwork():
         if cfg.save_nn:
             # create directory if it doesn't exist
             os.makedirs(cfg.save_path_nn, exist_ok=True)
-        # GameLogic expects 7 inputs and 4 outputs
-        self._nnsize = [7] + cfg.hlayers + [4]
+        # GameLogic expects 6 inputs and 4 outputs
+        self._nnsize = [6] + cfg.hlayers + [4]
 
         self._net = cpp_nn_py.ANN_MLP_GA_double(
             self._nnsize, cfg.seed, cfg.population_size,
@@ -68,11 +68,12 @@ class NeuralNetwork():
         self._net.Deserialize(full_path)
         # Get current epoch/generation from loaded net
         self._nGen = self._net.GetEpochs()
-        # GameLogic expects 7 inputs and 4 outputs
-        self._nnsize = [7] + cfg.hlayers + [4]
+        # GameLogic expects 8 inputs and 4 outputs
+        self._nnsize = [6] + cfg.hlayers + [4]
         if cfg.verbose:
             print(f"Loading network from: {full_path} "
                   f"(Generation {self._nGen})")
+            print(f"  Expected network structure: {self._nnsize}")
 
     def save(self):
         """Saves the network state and creates a _last copy."""
@@ -109,40 +110,35 @@ class NeuralNetwork():
         except Exception as e:
             print(f"Error during network serialization to {full_path}: {e}")
 
-    def _calculate_fitness(self, game_sim: GameLogic, steps_taken: int) \
-            -> float:
-        """Calculates fitness score for a completed game simulation.
-           Lower score is better.
+    def _calculate_terminal_penalty(self, game_sim: GameLogic,
+                                    steps_taken: int) -> float:
+        """Calculates the terminal penalty/reward based on the final state.
+           Lower score (penalty) is better.
         """
-        fitness = 0.0
+        terminal_penalty = 0.0
 
         # Base penalty for steps taken (encourages efficiency)
-        fitness += steps_taken * 0.1
+        terminal_penalty += steps_taken * 0.1
 
-        # Distance penalty (applied more heavily at the end)
-        dist_x = abs(game_sim.x - game_sim.landing_pad_center_x)
-        dist_y = abs(game_sim.y - game_sim.landing_pad_y)
-        # Scale distance penalty - higher if further away
-        fitness += (dist_x + dist_y) * 0.5
-
+        # Large terminal rewards/penalties based on outcome
         if game_sim.landed_successfully:
-            fitness -= 1000.0  # Big reward (negative penalty)
+            terminal_penalty -= 10000.0  # Big reward (negative penalty)
             # Bonus for remaining fuel
-            fitness -= game_sim.fuel * 2.0
+            terminal_penalty -= game_sim.fuel * 2.0
         elif game_sim.crashed:
-            fitness += 500.0  # Penalty for crashing
+            terminal_penalty += 10000.0  # Penalty for crashing
             # Increase penalty based on final velocity magnitude
             final_v_mag = np.sqrt(game_sim.vx**2 + game_sim.vy**2)
-            fitness += final_v_mag * 10.0
+            terminal_penalty += final_v_mag * 10.0
         elif game_sim.fuel <= 0 and not game_sim.landed:
-            fitness += 250.0  # Penalty for running out of fuel mid-air
+            terminal_penalty += 7000.0  # Penalty for running out of fuel
 
         # Add small penalty based on final velocity if not landed successfully
         if not game_sim.landed_successfully:
             final_v_mag = np.sqrt(game_sim.vx**2 + game_sim.vy**2)
-            fitness += final_v_mag * 1.0
+            terminal_penalty += final_v_mag * 10
 
-        return fitness
+        return terminal_penalty
 
     def train(self):
         if self._net is None:
@@ -157,7 +153,19 @@ class NeuralNetwork():
         num_outputs = self._nnsize[-1]
         population_size = self._net.GetPopSize()  # Use getter
 
+        low_fitness_streak = 0  # Counter for consecutive low fitness generations
+
         for gen in range(self._nGen, self._nGen + cfg.epochs):
+            # Reset pad positions every nb_batches generations
+            # if random_position is True
+            # Check using the loop variable 'gen' which starts from self._nGen
+            if game_cfg.random_position and gen % cfg.nb_batches == 0:
+                # Optional: Add a print statement to confirm reset
+                if cfg.verbose or True:  # Make it always print for now
+                    print("--- Resetting pad positions for Generation "
+                          f"{gen + 1} (Batch boundary) ---")
+                reset_pad_positions()  # Seed is handled internally
+
             fitness_scores = np.zeros(population_size, dtype=np.float64)
             all_steps = []  # Track steps per member for info
 
@@ -167,7 +175,7 @@ class NeuralNetwork():
                 game_sim = GameLogic(no_print=True)
                 state = game_sim.get_state()
                 done = False
-                current_fitness_penalty = 0.0  # Accumulate penalties
+                accumulated_step_penalty = 0.0  # Accumulate step penalties
                 steps = 0
 
                 while not done and steps < game_cfg.max_steps:
@@ -178,17 +186,22 @@ class NeuralNetwork():
                     self._net.feedforward(inputs, outputs, member_id, False)
                     action = np.argmax(outputs)
 
-                    # Update game state
-                    next_state, reward, done = game_sim.update(action)
+                    # Update game state - returns (state, done)
+                    next_state, done = game_sim.update(action)
 
-                    # --- Optional: Add small penalties during the run ---
+                    # --- Calculate step penalties ---
                     # Penalty for distance from pad center
+                    # (using state *after* update)
                     dist_x = abs(game_sim.x - game_sim.landing_pad_center_x)
                     dist_y = abs(game_sim.y - game_sim.landing_pad_y)
-                    current_fitness_penalty += (dist_x + dist_y) * 0.001
-                    # Penalty for using fuel (if action > 0)
-                    # current_fitness_penalty += (action > 0) * 0.01
-                    # ----------------------------------------------------
+                    accumulated_step_penalty += (dist_x + dist_y) * 0.001
+
+                    # Optional: Penalty for using fuel (if action > 0)
+                    # if action > 0:
+                    #    accumulated_step_penalty += 0.01
+                    # Small penalty per thrust action
+
+                    # --------------------------------
 
                     state = next_state
                     steps += 1
@@ -196,10 +209,13 @@ class NeuralNetwork():
                     if done:
                         break
 
-                # Calculate final fitness after episode ends
-                final_fitness = self._calculate_fitness(game_sim, steps)
-                fitness_scores[member_id] = final_fitness + \
-                    current_fitness_penalty
+                # Calculate terminal penalty based on final state
+                terminal_penalty = self._calculate_terminal_penalty(game_sim,
+                                                                    steps)
+                # Final fitness is sum of accumulated step penalties
+                # and terminal penalty
+                fitness_scores[member_id] = accumulated_step_penalty + \
+                    terminal_penalty
                 all_steps.append(steps)
 
             # Sort fitness scores (ascending, lower is better) and get indices
@@ -225,6 +241,25 @@ class NeuralNetwork():
                 f"{sorted_indices[0]})")
             print(f"  Avg Fitness:  {avg_fitness:.4f}")
             print(f"  Avg Steps:    {avg_steps:.1f}")
+
+            # --- Check for sustained low fitness and reset pads if needed ---
+            if best_fitness < cfg.fit_min:
+                low_fitness_streak += 1
+                if cfg.verbose:
+                    print(f"  Low fitness detected (Streak: "
+                          f"{low_fitness_streak}).")
+            else:
+                if low_fitness_streak > 0 and cfg.verbose:
+                     print(f"  Fitness recovered, resetting low fitness streak.")
+                low_fitness_streak = 0
+
+            if low_fitness_streak > cfg.fit_streak and game_cfg.random_position:
+                print(f"--- Fitness below {cfg.fit_min} for "
+                      f"{low_fitness_streak} generations. "
+                      "Resetting pad positions. ---")
+                reset_pad_positions()
+                low_fitness_streak = 0 # Reset streak after triggering reset
+            # ----------------------------------------------------------------
 
             # Save network periodically
             if cfg.save_nn and (self._nGen % cfg.save_interval == 0 or
@@ -262,18 +297,4 @@ class NeuralNetwork():
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        '--continue', dest="cont", action='store_true',
-        default=False, help="Continue training from checkpoint")
-    parser.add_argument(
-        '--step', type=int, default=0, help="Checkpoint step to load")
-    args = parser.parse_args()
-
-    NN = NeuralNetwork()
-
-    if args.cont:
-        NN.load(args.step)
-    else:
-        NN.init()
-    NN.train()  # Start training
+    pass

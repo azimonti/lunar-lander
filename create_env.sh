@@ -29,5 +29,5 @@ source "${MYVENV}/${SCRIPTDIR}/activate"
 echo "Installing requirements..."
 pip install -r requirements.txt
 
-echo "Virtual environment '$MYVENV' created and activated with Python 3.11."
+echo "Virtual environment '$MYVENV' created and activated."
 echo "Requirements installed."

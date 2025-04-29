@@ -1,9 +1,9 @@
 '''
-/*********************/
-/*  game_logic.py    */
-/*   Version 1.0     */
-/*    2025/04/27     */
-/*********************/
+/**********************/
+/*  mod_game_logic.py */
+/*   Version 1.0      */
+/*    2025/04/27      */
+/**********************/
 '''
 import numpy as np
 from mod_config import cfg, game_cfg as gcfg, planet_cfg as pcfg, \
@@ -12,11 +12,9 @@ from mod_config import cfg, game_cfg as gcfg, planet_cfg as pcfg, \
 
 class GameLogic:
     def __init__(self, no_print=False):
-        self.reset()
-        # Constants from config
-        self.landing_pad_center_x = gcfg.lpad_x1 + gcfg.lpad_width / 2
-        self.landing_pad_y = gcfg.pad_y1  # Using top boundary as reference
+        # Constants from config are set/updated in reset()
         self.no_print = no_print
+        self.reset()  # Call reset to initialize state and pad positions
 
     def p(self, text):
         if self.no_print:
@@ -36,9 +34,12 @@ class GameLogic:
         self.landed = False
         self.crashed = False
         self.landed_successfully = False
-        self.out_of_bounds = False
         self.time_step = 0
         self.action_log = []  # To track actions if needed
+
+        # Update pad-dependent calculations based on current gcfg
+        self.landing_pad_center_x = gcfg.lpad_x1 + gcfg.lpad_width / 2
+        self.landing_pad_y = gcfg.pad_y1
 
     def _apply_action(self, action: int):
         """Applies the chosen action (thrust).
@@ -75,13 +76,6 @@ class GameLogic:
         # Update position
         self.x += self.vx
         self.y += self.vy
-
-        # Check boundaries (simple check for now)
-        if self.x < 0 or self.x + lcfg.width > cfg.width:
-            self.vx *= -0.5  # Bounce off sides slightly
-            self.x = np.clip(self.x, 0, cfg.width - lcfg.width)
-            # self.crashed = True # Or just bounce?
-            # self.out_of_bounds = True
 
         # Prevent going below ground level before landing check
         ground_level = cfg.height - lcfg.height - gcfg.terrain_y
@@ -132,13 +126,13 @@ class GameLogic:
         """Performs one time step of the game simulation.
            Args: action (int): The action to apply
                                (0: Noop, 1: Up, 2: Left, 3: Right).
-           Returns: tuple: (state, reward, done)
+           Returns: tuple: (state, done)
                       state (np.array): The current state vector for the NN.
-                      reward (float): The reward obtained in this step.
                       done (bool): Whether the episode has ended.
         """
         if self.is_done():
-            return self.get_state(), 0.0, True
+            # Return current state and True for done
+            return self.get_state(), True
 
         self._apply_action(action)
         self._update_physics()
@@ -147,42 +141,15 @@ class GameLogic:
         self.time_step += 1
 
         done = self.is_done()
-        reward = self._calculate_reward(done)
+        # Reward calculation is moved to the training script
         state = self.get_state()
 
-        return state, reward, done
+        return state, done
 
     def is_done(self) -> bool:
         """Checks if the game episode has finished."""
         # return self.landed or self.crashed or self.fuel <= 0
-        # or self.out_of_bounds
-        # For now, it ends only on landing/crash or add a time limit later
         return self.landed or self.crashed
-
-    def _calculate_reward(self, done: bool) -> float:
-        """Calculates the reward for the current state/action.
-           Placeholder implementation. Needs refinement for RL.
-        """
-        reward = 0.0
-
-        # Penalty for fuel consumption
-        # reward -= 0.1 # Small penalty per step?
-        # reward -= (self.action_log[-1] > 0) * 0.05 # Penalty for using fuel
-
-        # Shaping reward: encourage getting closer to the pad
-        dist_x = self.x - self.landing_pad_center_x
-        dist_y = self.y - self.landing_pad_y  # Target is above ground
-        reward -= (abs(dist_x) + abs(dist_y)) * 0.001  # Penalize distance
-
-        if done:
-            if self.landed_successfully:
-                reward += 100.0  # Large reward for success
-                reward -= self.time_step * 0.1  # Penalize taking too long
-            elif self.crashed:
-                reward -= 100.0  # Large penalty for crashing
-            # elif self.fuel <= 0 and not self.landed:
-            #     reward -= 50.0 # Penalty for running out of fuel mid-air
-        return reward
 
     def get_state(self) -> np.ndarray:
         """Returns the current state vector for the NN."""
@@ -190,25 +157,27 @@ class GameLogic:
         dist_target_x = self.x - self.landing_pad_center_x
         dist_target_y = self.y - self.landing_pad_y  # Target Y is pad top
 
-        # Normalize? For now, use raw values.
-        # Normalization depends on the NN architecture and training process.
+        # Normalize the state for the NN
         state = np.array([
-            self.x / cfg.width,             # Normalized X position
-            self.y / cfg.height,            # Normalized Y position
+            # self.x / cfg.width,             # Normalized X position
+            # self.y / cfg.height,            # Normalized Y position
             # Normalized Vx (relative to max safe speed)
             self.vx / gcfg.max_vx,
             # Normalized Vy (relative to max safe speed)
             self.vy / gcfg.max_vy,
-            self.fuel / lcfg.max_fuel,      # Normalized Fuel
             dist_target_x / cfg.width,      # Normalized distance X
             dist_target_y / cfg.height,     # Normalized distance Y
-            # self.time_step / MAX_STEPS ? # Optional: Normalized
+            self.fuel / lcfg.max_fuel,      # Normalized Fuel
+            # Add normalized vertical acceleration (ay)
+            self.ay / pcfg.g if pcfg.g != 0 else self.ay
         ], dtype=float)
-        # Ensure vx/vy normalization doesn't cause issues
-        # if max speeds are very small or zero
+        # Ensure vx/vy/ay normalization doesn't cause issues
+        # if max speeds or gravity are very small or zero
         # Clip normalized velocity to avoid extremes
-        state[2] = np.clip(state[2], -5, 5)
-        state[3] = np.clip(state[3], -5, 5)
+        state[0] = np.clip(state[0], -2, 2)
+        state[1] = np.clip(state[1], -2, 2)
+        state[2] = np.clip(state[2], -2, 2)
+        state[3] = np.clip(state[3], -2, 2)
 
         return state
 
@@ -229,28 +198,4 @@ class GameLogic:
 
 if __name__ == '__main__':
     # Example usage (optional)
-    logic = GameLogic()
-    state = logic.get_state()
-    print("Initial State:", state)
-    done = False
-    step = 0
-    total_reward = 0
-    # Simulate a few steps with random actions
-    while not done and step < 500:
-        action = np.random.randint(0, 4)  # Random action
-        state, reward, done = logic.update(action)
-        total_reward += reward
-        # print(f"Step {step}: Action={action}, Reward={reward:.2f}, "
-        #      f"Done={done}")
-        # print(f" State: x={logic.x:.1f}, y={logic.y:.1f}, "
-        #      f"vx={logic.vx:.2f}, vy={logic.vy:.2f}, "
-        #      f"fuel={logic.fuel:.1f}")
-        step += 1
-
-    print(f"\nSimulation finished after {step} steps.")
-    print(f"Final State: x={logic.x:.1f}, y={logic.y:.1f}, "
-          f"vx={logic.vx:.2f}, vy={logic.vy:.2f}, fuel={logic.fuel:.1f}")
-    print(f"Landed: {logic.landed}, Crashed: {logic.crashed}, "
-          f"Success: {logic.landed_successfully}")
-    print(f"Total Reward: {total_reward:.2f}")
-    print("Final State Vector:", state)
+    pass

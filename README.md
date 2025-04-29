@@ -38,9 +38,10 @@ Further update of the submodule can be done with the command:
   git submodule update --remote
   ```
 
-4. Install required Python dependencies (a virtual environment can be created running the script `create_env.sh`):
+4. Install required Python dependencies in a virtual environment and activate it:
    ```
-   pip install -r requirements.txt
+   ./create_env.sh
+   source "venv/bin/activate" #venv/Scripts/activate on MINGW
    ```
 
 5. Compile the libraries in `ma-libs`

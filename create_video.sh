@@ -9,7 +9,8 @@ SAVE_PATH_REL="./data/img"
 SAVE_PATH_ABS="$(realpath "${BASHSCRIPTDIR}/${SAVE_PATH_REL}")"
 
 # --- Define ffmpeg parameters ---
-OUTPUT_VIDEO="${SAVE_PATH_ABS}/video.mp4"
+NOW=$(date +'%Y%m%d_%H%M')
+OUTPUT_VIDEO="${SAVE_PATH_ABS}/${NOW}_video.mp4"
 INPUT_PATTERN="${SAVE_PATH_ABS}/frame_%06d.png"
 
 # --- Check if image directory exists ---

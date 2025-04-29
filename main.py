@@ -7,15 +7,16 @@
 '''
 import pygame
 import argparse
+import glob
 import sys
 import os
 from types import SimpleNamespace
 
 from mod_config import palette, cfg, game_cfg as gcfg
-from game_logic import GameLogic
+from mod_game_logic import GameLogic
 from mod_lander import LanderVisuals  # Renamed from Lander
 # Import NN functions and training loop from train_nn.py
-from train_nn import NeuralNetwork
+from mod_nn_train import NeuralNetwork
 
 c = palette
 
@@ -108,9 +109,11 @@ def game_loop(mode: str):
     visuals = LanderVisuals()  # Loads assets
 
     # Initialize NN if in NN mode
+    start_time = 0  # Initialize timer variable
     if mode == 'nn_play':
         NN = NeuralNetwork()
         NN.load()
+        start_time = pygame.time.get_ticks()  # Get start time in milliseconds
 
     running = True
     game_over = False
@@ -149,16 +152,30 @@ def game_loop(mode: str):
                 # Get state for NN
                 current_state = logic.get_state()
                 # Get action from NN
-                action = NN.get_action(current_state)
-                # NN always "starts" the game
-                if not has_started and action != 0:
-                    has_started = True
+                nn_action = NN.get_action(current_state)
+
+                # Determine action, potentially forcing start after 2 seconds
+                if not has_started:
+                    elapsed_time = pygame.time.get_ticks() - start_time
+                    if elapsed_time > 2000:  # 2 seconds threshold
+                        print("GameLogic: Forcing start (UP) after 2 seconds.")
+                        action = 1  # Force UP action
+                        has_started = True
+                    elif nn_action != 0:  # NN initiated action before 2s
+                        action = 1  # Force UP action to start
+                        has_started = True
+                    else:
+                        action = 0  # NOOP if NN says so and time < 2s
+                else:
+                    # Game already started, use NN's action
+                    action = nn_action
 
         # --- Game Logic Update ---
         # Only update logic if game has started (player moved or NN acted)
         # and game is not over
         if has_started and not game_over:
-            state, reward, done = logic.update(action)
+            # logic.update now returns (state, done)
+            state, done = logic.update(action)
             if done:
                 game_over = True
                 render_info = logic.get_render_info()
@@ -193,7 +210,7 @@ def main():
         description="Lunar Lander Game with NN option.")
     parser.add_argument(
         '--mode',
-        type=str, choices=['play', 'train', 'nn_play'], default='play',
+        type=str, choices=['play', 'nn_train', 'nn_play'], default='play',
         help=("Mode to run: 'play' (manual), 'train' "
               "(NN training, no GUI), 'nn_play' (NN plays with GUI).")
     )
@@ -201,12 +218,18 @@ def main():
         '--continue', dest="cont", action='store_true',
         default=False, help="Continue training from checkpoint")
     parser.add_argument(
-        '--step', type=int, default=0, help="Checkpoint step to load")
+        '--step', type=int, help="Checkpoint step to load")
     args = parser.parse_args()
 
     if cfg.save_img:
         # create directory if it doesn't exist
         os.makedirs(cfg.save_path_img, exist_ok=True)
+        # remove all png files in the directory
+        for f in glob.glob(os.path.join(cfg.save_path_img, '*.png')):
+            os.remove(f)
+    elif os.path.exists(cfg.save_path_img):
+        for f in glob.glob(os.path.join(cfg.save_path_img, '*.png')):
+            os.remove(f)
 
     if args.mode == 'play':
         print("Starting game in Manual Play mode...")
@@ -214,10 +237,13 @@ def main():
     elif args.mode == 'nn_play':
         print("Starting game in NN Play mode...")
         game_loop(mode='nn_play')
-    elif args.mode == 'train':
+    elif args.mode == 'nn_train':
         NN = NeuralNetwork()
         if args.cont:
-            NN.load(args.step)
+            if args.step:
+                NN.load(args.step)
+            else:
+                NN.load()
         else:
             NN.init()
         NN.train()
@@ -226,6 +252,4 @@ def main():
 
 
 if __name__ == '__main__':
-    if sys.version_info[0] < 3:
-        raise RuntimeError('Must be using Python 3')
     main()
