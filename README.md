@@ -9,6 +9,8 @@ A fully-playable Lunar Landing game in Python. Control the lander manually or en
 - Realistic physics simulation,
 - Modular and extensible codebase.
 
+https://github.com/user-attachments/assets/a9feb50e-0872-41a3-84ee-86dfc4e0c948
+
 ## Requirements
 
 - Git
