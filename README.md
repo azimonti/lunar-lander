@@ -49,11 +49,8 @@ Further update of the submodule can be done with the command:
 5. Compile the libraries in `ma-libs`
   ```
   cd externals/ma-libs
-  # optional steps if dependencies are not installed globally
-  # ./manage_dependency_libraries.sh -d
-  # ./manage_dependency_libraries.sh -b
-  ./cbuild.sh --build-type Debug --cmake-params "-DCPP_LIBNN=ON -DCPP_PYTHON_BINDINGS=ON"
-  ./cbuild.sh --build-type Release --cmake-params "-DCPP_LIBNN=ON -DCPP_PYTHON_BINDINGS=ON"
+  ./cbuild.sh --build-type Debug --cmake-params "-DCPP_LIBNN=ON -DPYTHON_LIBNN=ON"
+  ./cbuild.sh --build-type Release --cmake-params "-DCPP_LIBNN=ON -DPYTHON_LIBNN=ON"
   cd ../..
   ```
 

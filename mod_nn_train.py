@@ -28,7 +28,7 @@ sys.path.append(os.path.realpath(build_path))
 
 # Try importing the cpp_nn_py module
 try:
-    import cpp_nn_py as cpp_nn_py
+    import cpp_nn_py2 as cpp_nn_py
 except ModuleNotFoundError as e:
     print(f"Error: {e}")
 
@@ -61,9 +61,9 @@ class NeuralNetwork():
         self._net = cpp_nn_py.ANN_MLP_GA_double()
         self._net.SetName(cfg.name)
         if step == 'last':
-            filename = f"{cfg.name}_last.hd5"
+            filename = f"{cfg.name}_last.txt"
         else:
-            filename = f"{cfg.name}_{step}.hd5"
+            filename = f"{cfg.name}_{step}.txt"
 
         full_path = os.path.join(cfg.save_path_nn, filename)
         self._net.Deserialize(full_path)
@@ -82,11 +82,11 @@ class NeuralNetwork():
         base_filename_part = f"{cfg.name}"
         if not cfg.overwrite:
             base_filename_part += f"_{self._nGen}"
-        filename = f"{base_filename_part}.hd5"
+        filename = f"{base_filename_part}.txt"
         full_path = os.path.join(cfg.save_path_nn, filename)
 
         # Construct the "_last" filename
-        last_filename = f"{cfg.name}_last.hd5"
+        last_filename = f"{cfg.name}_last.txt"
         last_full_path = os.path.join(cfg.save_path_nn, last_filename)
 
         if os.path.exists(full_path):
