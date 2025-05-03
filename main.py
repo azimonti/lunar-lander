@@ -12,7 +12,7 @@ import sys
 import os
 from types import SimpleNamespace
 
-from mod_config import palette, cfg, game_cfg as gcfg
+from mod_config import palette, cfg, game_cfg as gcfg, reset_pad_positions
 from mod_game_logic import GameLogic
 from mod_lander import LanderVisuals  # Renamed from Lander
 # Import NN functions and training loop from train_nn.py
@@ -219,6 +219,12 @@ def main():
         default=False, help="Continue training from checkpoint")
     parser.add_argument(
         '--step', type=int, help="Checkpoint step to load")
+    parser.add_argument(
+        '--left_to_right', dest="force_left_to_right", action='store_true',
+        default=False, help="Force the start pad to be on the right")
+    parser.add_argument(
+        '--right_to_left', dest="force_right_to_left", action='store_true',
+        default=False, help="Force the start pad to be on the left")
     args = parser.parse_args()
 
     if cfg.save_img:
@@ -233,8 +239,12 @@ def main():
 
     if args.mode == 'play':
         print("Starting game in Manual Play mode...")
+        reset_pad_positions(force_left_to_right=args.force_left_to_right,
+                            force_right_to_left=args.force_right_to_left)
         game_loop(mode='play')
     elif args.mode == 'nn_play':
+        reset_pad_positions(force_left_to_right=args.force_left_to_right,
+                            force_right_to_left=args.force_right_to_left)
         print("Starting game in NN Play mode...")
         game_loop(mode='nn_play')
     elif args.mode == 'nn_train':

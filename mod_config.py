@@ -67,17 +67,40 @@ cfg = SimpleNamespace(
 # config used
 lander_cfg = lander_cfg_1
 
-# --- Pad Position Randomization ---
-MIN_PAD_SEPARATION = 10
-BORDER_LEFT = 10
-BORDER_RIGHT = 10
+
+game_cfg = SimpleNamespace(
+    # --- Game Configuration ---
+    # initial position [x, y] (start on takeoff pad, just above terrain)
+    random_position=True,       # set randomly the pad
+    x0=np.array([52.0, cfg.height - lander_cfg.height - 52]),
+    v0=np.array([0.0, 0.0]),    # initial velocity [vx, vy]
+    a0=np.array([0.0, 0.0]),    # initial acceleration [ax, ay]
+    spad_x1=50,                 # takeoff pad left boundary (x1)
+    spad_width=80,              # takeoff pad width
+    lpad_x1=cfg.width - 400,    # landing pad left boundary (x1)
+    lpad_width=200,             # landing pad width
+    pad_y1=cfg.height - 50,     # landing/ takeoff pad top boundary (y1)
+    pad_height=10,              # landing/ takeoff pad height
+    terrain_y=50,               # set the zero of the terrain
+    max_vx=0.5,                 # max horizontal speed when landing
+    max_vy=2.0,                 # max vertical speed when landing
+    max_steps=1000,             # max steps per simulation episode
+    current_seed=None           # Seed used for the current pad positions
+)
 
 
-def _generate_random_pad_positions(screen_width, spad_width,
-                                   lpad_width, seed=None):
+def generate_random_pad_positions(seed=None,
+                                  force_left_to_right=False,
+                                  force_right_to_left=False):
     """Generates random, non-overlapping positions
        for start and landing pads
        using a simple generate-and-test approach."""
+    MIN_PAD_SEPARATION = 10
+    BORDER_LEFT = 10
+    BORDER_RIGHT = 10
+    screen_width = cfg.width
+    spad_width = game_cfg.spad_width
+    lpad_width = game_cfg.lpad_width
     if seed is not None:
         random.seed(seed)
 
@@ -104,38 +127,40 @@ def _generate_random_pad_positions(screen_width, spad_width,
             (lpad_width / 2) + MIN_PAD_SEPARATION
 
         if abs(center_spad - center_lpad) >= min_dist_centers:
-            # Valid configuration found!
-            break
+            # Valid geometric configuration found
+            needs_mirror = False
+            if force_left_to_right and (center_spad >= center_lpad):
+                # Spad is right/equal, but needs to be left -> mirror
+                needs_mirror = True
+            elif force_right_to_left and (center_spad <= center_lpad):
+                # Spad is left/equal, but needs to be right -> mirror
+                needs_mirror = True
+
+            if needs_mirror:
+                # Mirror positions relative to the center of the usable area
+                mid_point = BORDER_LEFT + (
+                    screen_width - BORDER_LEFT - BORDER_RIGHT) / 2.0
+
+                # Mirror centers
+                mirrored_center_spad = 2 * mid_point - center_spad
+                mirrored_center_lpad = 2 * mid_point - center_lpad
+
+                # Update x1 positions based on mirrored centers
+                spad_x1 = mirrored_center_spad - spad_width / 2.0
+                lpad_x1 = mirrored_center_lpad - lpad_width / 2.0
+
+            # Configuration is now geometrically valid
+            # and directionally correct (if forced)
+            break  # Exit the while loop
+
         # else: continue loop to generate a new pair
 
     # Return the validated pair
     return int(spad_x1), int(lpad_x1)
 
 
-# --- Game Configuration ---
-
-
-game_cfg = SimpleNamespace(
-    # initial position [x, y] (start on takeoff pad, just above terrain)
-    random_position=True,       # set randomly the pad
-    x0=np.array([52.0, cfg.height - lander_cfg.height - 52]),
-    v0=np.array([0.0, 0.0]),    # initial velocity [vx, vy]
-    a0=np.array([0.0, 0.0]),    # initial acceleration [ax, ay]
-    spad_x1=50,                 # takeoff pad left boundary (x1)
-    spad_width=80,              # takeoff pad width
-    lpad_x1=cfg.width - 400,    # landing pad left boundary (x1)
-    lpad_width=200,             # landing pad width
-    pad_y1=cfg.height - 50,     # landing/ takeoff pad top boundary (y1)
-    pad_height=10,              # landing/ takeoff pad height
-    terrain_y=50,               # set the zero of the terrain
-    max_vx=0.5,                 # max horizontal speed when landing
-    max_vy=2.0,                 # max vertical speed when landing
-    max_steps=1000,             # max steps per simulation episode
-    current_seed=None           # Seed used for the current pad positions
-)
-
-
-def reset_pad_positions(seed=None):
+def reset_pad_positions(seed=None, force_left_to_right=False,
+                        force_right_to_left=False):
     """Resets the pad positions if random_position is True.
     Uses provided seed or generates one."""
     # global game_cfg  # Ensure we modify the global game_cfg
@@ -144,11 +169,10 @@ def reset_pad_positions(seed=None):
             # Generate a new seed if none provided for reproducibility tracking
             seed = random.randint(0, 2**32 - 1)
         game_cfg.current_seed = seed
-        game_cfg.spad_x1, game_cfg.lpad_x1 = _generate_random_pad_positions(
-            cfg.width,
-            game_cfg.spad_width,
-            game_cfg.lpad_width,
-            seed=game_cfg.current_seed
+        game_cfg.spad_x1, game_cfg.lpad_x1 = generate_random_pad_positions(
+            seed=game_cfg.current_seed,
+            force_left_to_right=force_left_to_right,
+            force_right_to_left=force_right_to_left
         )
         # Update lander initial x position to be centered on the new start pad
         game_cfg.x0[0] = game_cfg.spad_x1 + (game_cfg.spad_width / 2
@@ -161,8 +185,23 @@ def reset_pad_positions(seed=None):
             print(f"  Lander Initial x0: {game_cfg.x0[0]:.2f}")
 
 
-# Initialize pad positions AND lander start position based on the flag
-reset_pad_positions()
+def set_pad_positions(spad_x1, lpad_x1):
+    """Sets the pad positions to specific values."""
+    # global game_cfg, lander_cfg, cfg # Ensure access if needed
+
+    game_cfg.spad_x1 = spad_x1
+    game_cfg.lpad_x1 = lpad_x1
+
+    # Update lander initial x position based on the new start pad
+    game_cfg.x0[0] = game_cfg.spad_x1 + (game_cfg.spad_width / 2
+                                         ) - (lander_cfg.width / 2)
+
+    # Optionally log the manual setting
+    if cfg.verbose:
+        print("Pad positions set manually:")
+        print(f"  Start Pad x1: {game_cfg.spad_x1}, "
+              f"Landing Pad x1: {game_cfg.lpad_x1}")
+        print(f"  Lander Initial x0: {game_cfg.x0[0]:.2f}")
 
 
 planet_cfg = SimpleNamespace(
@@ -186,7 +225,7 @@ nn_config = SimpleNamespace(
     save_interval=25,       # save every n generations
     epochs=1000,            # number of training epochs
     nb_batches=100,         # if random_position=True keep fix the layout
-    fit_min=-2000,          # reset if going below this for more than 5 generations
+    fit_min=-2000,          # reset if going below for more than 5 generations
     fit_streak=5,           # max consecutive low fitness generations
     verbose=False
 )
