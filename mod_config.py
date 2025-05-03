@@ -222,11 +222,13 @@ nn_config = SimpleNamespace(
     save_nn=True,           # save
     overwrite=False,        # save overwriting
     save_path_nn="./data/",  # save path
-    save_interval=25,       # save every n generations
+    save_interval=5,        # save every n generations
     epochs=1000,            # number of training epochs
-    nb_batches=100,         # if random_position=True keep fix the layout
+    nb_batches=100,         # keep fix the layout before randomize it
     fit_min=-2000,          # reset if going below for more than 5 generations
-    fit_streak=5,           # max consecutive low fitness generations
+    fit_streak=5,           # max consecutive low fitness generations,
+    multiple_layout=True,   # use multiple layout at once instead of a single
+    layout_nb=20,           # number of multiple layouts
     verbose=False
 )
 

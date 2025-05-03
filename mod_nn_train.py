@@ -11,7 +11,8 @@ import sys
 import shutil
 
 # Import reset_pad_positions function
-from mod_config import nn_config as cfg, game_cfg, reset_pad_positions
+from mod_config import nn_config as cfg, game_cfg, reset_pad_positions, \
+    generate_random_pad_positions, set_pad_positions
 from mod_game_logic import GameLogic
 
 cwd = os.getcwd()
@@ -149,27 +150,178 @@ class NeuralNetwork():
         print(f"Population size: {cfg.population_size}, "
               f"Top performers: {cfg.top_individuals}")
         print(f"Network structure: {self._nnsize}")
+        if cfg.multiple_layout:
+            self.train_multiple_layout()
+        else:
+            self.train_single_layout()
 
+    def train_multiple_layout(self):
         num_outputs = self._nnsize[-1]
-        population_size = self._net.GetPopSize()  # Use getter
+        population_size = self._net.GetPopSize()
+        num_layouts = cfg.layout_nb
 
-        low_fitness_streak = 0  # Counter for consecutive low fitness generations
+        print(f"Generating {num_layouts} layouts for training...")
+        layouts = []
+        left_to_right_count = 0
+        right_to_left_count = 0
+        for i in range(num_layouts):
+            spad_x1, lpad_x1 = generate_random_pad_positions()
+            layouts.append({'spad_x1': spad_x1, 'lpad_x1': lpad_x1})
+            # Determine direction based on center points for accuracy
+            spad_center = spad_x1 + game_cfg.spad_width / 2
+            lpad_center = lpad_x1 + game_cfg.lpad_width / 2
+            if spad_center < lpad_center:
+                left_to_right_count += 1
+            else:
+                right_to_left_count += 1
+            if cfg.verbose:
+                print(f"  Layout {i+1}: Start={spad_x1}, Landing={lpad_x1}")
+
+        print(f"Generated layouts: {left_to_right_count} left-to-right, "
+              f"{right_to_left_count} right-to-left.")
+
+        low_fitness_streak = 0  # Counter for consecutive low fit generations
 
         for gen in range(self._nGen, self._nGen + cfg.epochs):
+            print(f"\n--- Generation {gen + 1} ---")
+            fitness_scores = np.zeros(population_size, dtype=np.float64)
+            all_member_steps = []  # Track average steps per member
+
+            for member_id in range(population_size):
+                total_fitness_for_member = 0.0
+                total_steps_for_member = 0
+
+                for layout_idx, layout_info in enumerate(layouts):
+                    game_sim = GameLogic(no_print=True)
+                    # Set the specific layout for this run
+                    set_pad_positions(layout_info['spad_x1'],
+                                      layout_info['lpad_x1'])
+                    # Important: Reset game state for the new layout
+                    game_sim.reset()
+
+                    state = game_sim.get_state()
+                    done = False
+                    accumulated_step_penalty = 0.0
+                    steps = 0
+
+                    while not done and steps < game_cfg.max_steps:
+                        inputs = np.array(state, dtype=np.float64)
+                        outputs = np.zeros(num_outputs, dtype=np.float64)
+
+                        # Get action from NN for the current member
+                        self._net.feedforward(inputs, outputs, member_id,
+                                              False)
+                        action = np.argmax(outputs)
+
+                        # Update game state
+                        next_state, done = game_sim.update(action)
+
+                        # Calculate step penalties for this layout run
+                        dist_x = abs(game_sim.x
+                                     - game_sim.landing_pad_center_x)
+                        dist_y = abs(game_sim.y
+                                     - game_sim.landing_pad_y)
+                        # Penalize slightly more for being
+                        # far vertically near pad_y
+                        y_penalty_factor = 1.0 + max(0, (
+                            game_sim.landing_pad_y - game_sim.y) / 50.0)
+                        # Adjusted penalty weights
+                        accumulated_step_penalty += (
+                            dist_x * 0.5 + dist_y
+                            * y_penalty_factor) * 0.002
+
+                        state = next_state
+                        steps += 1
+
+                        if done:
+                            break
+
+                    # Calculate terminal penalty for this layout run
+                    terminal_penalty = self._calculate_terminal_penalty(
+                        game_sim, steps)
+                    # Fitness for this single layout run
+                    fitness_for_layout = accumulated_step_penalty + \
+                        terminal_penalty
+
+                    total_fitness_for_member += fitness_for_layout
+                    total_steps_for_member += steps
+
+                # Average fitness across all layouts for this member
+                average_fitness = total_fitness_for_member / num_layouts
+                fitness_scores[member_id] = average_fitness
+                # Store average steps per layout for this member
+                all_member_steps.append(total_steps_for_member / num_layouts)
+
+            # Sort average fitness scores (ascending, lower is better)
+            sorted_indices = np.argsort(fitness_scores)
+
+            # Update NN weights and biases based on sorted average fitness
+            self._net.UpdateWeightsAndBiases(sorted_indices)
+
+            # Create the next population
+            self._net.CreatePopulation(cfg.elitism)
+
+            # Update internal epoch counter in the C++ object
+            self._net.UpdateEpochs(1)  # Increment epoch by 1
+            self._nGen = self._net.GetEpochs()  # Sync python counter
+
+            # Print generation summary using average values
+            best_avg_fitness = fitness_scores[sorted_indices[0]]
+            avg_fitness = np.mean(fitness_scores)
+            # Calculate overall average steps across all members and layouts
+            avg_steps = np.mean(all_member_steps)
+            print(f"Generation {self._nGen} complete.")
+            print(
+                f"  Best Avg Fitness: {best_avg_fitness:.4f} (Member "
+                f"{sorted_indices[0]})")
+            print(f"  Avg Fitness:      {avg_fitness:.4f}")
+            print(f"  Avg Steps/Layout: {avg_steps:.1f}")
+
+            # --- Check for sustained low fitness (using best average fitness)
+            if best_avg_fitness < cfg.fit_min:
+                low_fitness_streak += 1
+                if cfg.verbose:
+                    print(f"  Low average fitness detected (Streak: "
+                          f"{low_fitness_streak}).")
+            else:
+                if low_fitness_streak > 0 and cfg.verbose:
+                    print("  Average fitness recovered, "
+                          "resetting low fitness streak.")
+                low_fitness_streak = 0
+
+            # If layouts needed to change, logic would go here.
+            if low_fitness_streak > cfg.fit_streak:
+                print(f"--- Average fitness below {cfg.fit_min} for "
+                      f"{low_fitness_streak} generations. "
+                      "Consider adjusting parameters or "
+                      "layout generation. ---")
+                # Action to take? Regenerate layouts? Stop?
+                low_fitness_streak = 0  # Reset streak
+
+            # Save network periodically
+            if cfg.save_nn and (self._nGen % cfg.save_interval == 0 or
+                                gen == self._nGen + cfg.epochs - 1):
+                self.save()
+
+        print("\nTraining finished.")
+
+    def train_single_layout(self):
+        num_outputs = self._nnsize[-1]
+        population_size = self._net.GetPopSize()
+
+        low_fitness_streak = 0  # Counter for consecutive low fit generations
+
+        for gen in range(self._nGen, self._nGen + cfg.epochs):
+            print(f"\n--- Generation {gen + 1} ---")
             # Reset pad positions every nb_batches generations
-            # if random_position is True
-            # Check using the loop variable 'gen' which starts from self._nGen
-            if game_cfg.random_position and gen % cfg.nb_batches == 0:
-                # Optional: Add a print statement to confirm reset
-                if cfg.verbose or True:  # Make it always print for now
+            if gen % cfg.nb_batches == 0:
+                if cfg.verbose:
                     print("--- Resetting pad positions for Generation "
                           f"{gen + 1} (Batch boundary) ---")
-                reset_pad_positions()  # Seed is handled internally
+                reset_pad_positions()
 
             fitness_scores = np.zeros(population_size, dtype=np.float64)
             all_steps = []  # Track steps per member for info
-
-            print(f"\n--- Generation {gen + 1} ---")
 
             for member_id in range(population_size):
                 game_sim = GameLogic(no_print=True)
@@ -195,13 +347,6 @@ class NeuralNetwork():
                     dist_x = abs(game_sim.x - game_sim.landing_pad_center_x)
                     dist_y = abs(game_sim.y - game_sim.landing_pad_y)
                     accumulated_step_penalty += (dist_x + dist_y) * 0.001
-
-                    # Optional: Penalty for using fuel (if action > 0)
-                    # if action > 0:
-                    #    accumulated_step_penalty += 0.01
-                    # Small penalty per thrust action
-
-                    # --------------------------------
 
                     state = next_state
                     steps += 1
@@ -250,15 +395,15 @@ class NeuralNetwork():
                           f"{low_fitness_streak}).")
             else:
                 if low_fitness_streak > 0 and cfg.verbose:
-                     print(f"  Fitness recovered, resetting low fitness streak.")
+                    print("  Fitness recovered, resetting low fitness streak.")
                 low_fitness_streak = 0
 
-            if low_fitness_streak > cfg.fit_streak and game_cfg.random_position:
+            if low_fitness_streak > cfg.fit_streak:
                 print(f"--- Fitness below {cfg.fit_min} for "
                       f"{low_fitness_streak} generations. "
                       "Resetting pad positions. ---")
                 reset_pad_positions()
-                low_fitness_streak = 0 # Reset streak after triggering reset
+                low_fitness_streak = 0  # Reset streak after triggering reset
             # ----------------------------------------------------------------
 
             # Save network periodically
