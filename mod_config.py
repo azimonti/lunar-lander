@@ -212,10 +212,11 @@ planet_cfg = SimpleNamespace(
 
 nn_config = SimpleNamespace(
     name="lunar_lander",    # nn name
-    hlayers=[8, 64, 16],    # hidden layer structure
+    hlayers=[8, 32, 16],    # hidden layer structure
+    use_float=False,        # allow switch between c++ float and double
     seed=5247,              # seed
     top_individuals=10,     # number of top individuals to be selected
-    population_size=300,    # population size
+    population_size=100,    # population size
     mixed_population=True,  # use mixed population
     elitism=True,           # keep the best individual as-is
     activation_id=1,        # SIGMOID=0, TANH=1
@@ -228,7 +229,7 @@ nn_config = SimpleNamespace(
     fit_min=-2000,          # reset if going below for more than 5 generations
     fit_streak=5,           # max consecutive low fitness generations,
     multiple_layout=True,   # use multiple layout at once instead of a single
-    layout_nb=20,           # number of multiple layouts
+    layout_nb=100,          # number of multiple layouts
     verbose=False
 )
 

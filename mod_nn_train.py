@@ -49,10 +49,16 @@ class NeuralNetwork():
         # GameLogic expects 5 inputs and 4 outputs
         self._nnsize = [5] + nn_config.hlayers + [4]
 
-        self._net = cpp_nn_py.ANN_MLP_GA_double(
-            self._nnsize, nn_config.seed, nn_config.population_size,
-            nn_config.top_individuals, nn_config.activation_id,
-            nn_config.elitism)
+        if nn_config.use_float:
+            self._net = cpp_nn_py.ANN_MLP_GA_float(
+                self._nnsize, nn_config.seed, nn_config.population_size,
+                nn_config.top_individuals, nn_config.activation_id,
+                nn_config.elitism)
+        else:
+            self._net = cpp_nn_py.ANN_MLP_GA_double(
+                self._nnsize, nn_config.seed, nn_config.population_size,
+                nn_config.top_individuals, nn_config.activation_id,
+                nn_config.elitism)
 
         self._net.SetName(nn_config.name)
         self._net.SetMixed(nn_config.mixed_population)
@@ -60,7 +66,10 @@ class NeuralNetwork():
         self._nGen = 0  # Start from generation 0 if initializing
 
     def load(self, step='last'):
-        self._net = cpp_nn_py.ANN_MLP_GA_double()
+        if nn_config.use_float:
+            self._net = cpp_nn_py.ANN_MLP_GA_float()
+        else:
+            self._net = cpp_nn_py.ANN_MLP_GA_double()
         self._net.SetName(nn_config.name)
         if step == 'last':
             filename = f"{nn_config.name}_last.txt"
@@ -116,40 +125,49 @@ class NeuralNetwork():
     def _calculate_terminal_penalty(self, game_sim: GameLogic,
                                     steps_taken: int) -> float:
         """Calculates the terminal penalty/reward based on the final state.
-           Lower score (penalty) is better. Aims to strongly reward landing
-           and penalize passivity or failure states.
+           Lower score (penalty) is better.
+           - Rewards successful landing.
+           - Penalizes crash, out of fuel, and timeout differently.
+           - Timeout (floating) is penalized most heavily.
         """
         terminal_penalty = 0.0
+        # Calculate final velocity and distance only once
+        final_v_mag = np.sqrt(game_sim.vx**2 + game_sim.vy**2)
+        final_dist_x = abs(game_sim.x - game_sim.landing_pad_center_x)
+        final_dist_y = abs(game_sim.y - game_sim.landing_pad_y)
+        final_dist_to_pad = np.sqrt(final_dist_x**2 + final_dist_y**2)
 
-        # Base penalty for steps taken (reduced to focus on outcome)
-        terminal_penalty += steps_taken * 0.05
-
-        # Large terminal rewards/penalties based on outcome
         if game_sim.landed_successfully:
-            terminal_penalty -= 50000.0  # Significantly increased reward
-            # Increased bonus for remaining fuel
-            terminal_penalty -= game_sim.fuel * 5.0
+            # Large reward for successful landing
+            terminal_penalty -= 2000.0
+            # Bonus for remaining fuel
+            terminal_penalty -= game_sim.fuel * 10.0
+            # Small bonus for low final velocity (already implied by landing)
+            terminal_penalty -= final_v_mag * 5.0
         elif game_sim.crashed:
-            terminal_penalty += 20000.0  # Increased penalty for crashing
-            # Increased penalty based on final velocity magnitude
-            final_v_mag = np.sqrt(game_sim.vx**2 + game_sim.vy**2)
-            terminal_penalty += final_v_mag * 20.0
+            # Penalty for crashing
+            terminal_penalty += 500.0
+            # Penalty based on impact velocity
+            terminal_penalty += final_v_mag * 50.0
+            # Penalty for distance from pad at crash
+            terminal_penalty += final_dist_to_pad * 100.0
         elif game_sim.fuel <= 0 and not game_sim.landed:
-            # Increased penalty for running out of fuel before landing
-            terminal_penalty += 15000.0
+            # Higher penalty for running out of fuel before landing
+            terminal_penalty += 750.0
+            # Penalty for final velocity
+            terminal_penalty += final_v_mag * 75.0
+            # Penalty for final distance from pad
+            terminal_penalty += final_dist_to_pad * 150.0
+        else:  # Timed out (reached max_steps without landing or crashing)
+            # Highest penalty for timing out (floating)
+            terminal_penalty += 1000.0
+            # Significant penalty for final velocity
+            terminal_penalty += final_v_mag * 100.0
+            # Significant penalty for final distance from pad
+            terminal_penalty += final_dist_to_pad * 200.0
 
-        # Add penalties if not landed successfully (crash, no fuel, timeout)
-        if not game_sim.landed_successfully:
-            # Penalty for final distance to pad center
-            final_dist_x = abs(game_sim.x - game_sim.landing_pad_center_x)
-            final_dist_y = abs(game_sim.y - game_sim.landing_pad_y)
-            final_dist_to_pad = np.sqrt(final_dist_x**2 + final_dist_y**2)
-            # Significant penalty for being far away at the end
-            terminal_penalty += final_dist_to_pad * 50.0
-
-            # Penalty based on final velocity magnitude (kept)
-            final_v_mag = np.sqrt(game_sim.vx**2 + game_sim.vy**2)
-            terminal_penalty += final_v_mag * 10.0
+        # Note: The base penalty for steps_taken is removed from here.
+        # Step penalties are accumulated in the main training loops.
 
         return terminal_penalty
 
@@ -286,9 +304,12 @@ class NeuralNetwork():
                     accumulated_step_penalty = 0.0
                     steps = 0
 
+                    # Determine dtype based on config
+                    dtype = np.float32 if nn_config.use_float else np.float64
+
                     while not done and steps < game_cfg.max_steps:
-                        inputs = np.array(state, dtype=np.float64)
-                        outputs = np.zeros(num_outputs, dtype=np.float64)
+                        inputs = np.array(state, dtype=dtype)
+                        outputs = np.zeros(num_outputs, dtype=dtype)
 
                         # Get action from NN for the current member
                         self._net.feedforward(inputs, outputs, member_id,
@@ -298,19 +319,29 @@ class NeuralNetwork():
                         # Update game state
                         next_state, done = game_sim.update(action)
 
-                        # Calculate step penalties for this layout run
-                        dist_x = abs(game_sim.x
-                                     - game_sim.landing_pad_center_x)
-                        dist_y = abs(game_sim.y
-                                     - game_sim.landing_pad_y)
-                        # Penalize slightly more for being
-                        # far vertically near pad_y
-                        y_penalty_factor = 1.0 + max(0, (
-                            game_sim.landing_pad_y - game_sim.y) / 50.0)
-                        # Increased step penalty weight to encourage progress
-                        accumulated_step_penalty += (
-                            dist_x * 0.5 + dist_y
-                            * y_penalty_factor) * 0.01
+                        # --- Calculate step-wise shaping penalties ---
+                        step_penalty = 0.0
+                        # Distance penalty (encourage getting closer)
+                        dist_x = game_sim.x - game_sim.landing_pad_center_x
+                        dist_y = game_sim.y - game_sim.landing_pad_y
+                        distance_to_pad = np.sqrt(dist_x**2 + dist_y**2)
+                        step_penalty += 0.1 * distance_to_pad
+
+                        # Velocity penalty (encourage slow, controlled descent)
+                        # Penalize horizontal speed
+                        step_penalty += 0.5 * abs(game_sim.vx)
+                        # Penalize vertical speed more
+                        step_penalty += 1.0 * abs(game_sim.vy)
+
+                        # Fuel penalty (encourage efficiency)
+                        if action > 0:  # Action 1, 2, or 3 used fuel
+                            step_penalty += 0.2
+
+                        # Step penalty (encourage faster solutions)
+                        step_penalty += 0.1
+
+                        accumulated_step_penalty += step_penalty
+                        # --- End step-wise penalty calculation ---
 
                         state = next_state
                         steps += 1
@@ -321,7 +352,7 @@ class NeuralNetwork():
                     # Calculate terminal penalty for this layout run
                     terminal_penalty = self._calculate_terminal_penalty(
                         game_sim, steps)
-                    # Fitness for this single layout run
+                    # Final fitness
                     fitness_for_layout = accumulated_step_penalty + \
                         terminal_penalty
 
@@ -410,12 +441,15 @@ class NeuralNetwork():
                 game_sim = GameLogic(no_print=True)
                 state = game_sim.get_state()
                 done = False
-                accumulated_step_penalty = 0.0  # Accumulate step penalties
+                accumulated_step_penalty = 0.0
                 steps = 0
 
+                # Determine dtype based on config
+                dtype = np.float32 if nn_config.use_float else np.float64
+
                 while not done and steps < game_cfg.max_steps:
-                    inputs = np.array(state, dtype=np.float64)
-                    outputs = np.zeros(num_outputs, dtype=np.float64)
+                    inputs = np.array(state, dtype=dtype)
+                    outputs = np.zeros(num_outputs, dtype=dtype)
 
                     # Get action from NN
                     self._net.feedforward(inputs, outputs, member_id, False)
@@ -424,13 +458,29 @@ class NeuralNetwork():
                     # Update game state - returns (state, done)
                     next_state, done = game_sim.update(action)
 
-                    # --- Calculate step penalties ---
-                    # Penalty for distance from pad center
-                    # (using state *after* update)
-                    dist_x = abs(game_sim.x - game_sim.landing_pad_center_x)
-                    dist_y = abs(game_sim.y - game_sim.landing_pad_y)
-                    # Increased step penalty weight
-                    accumulated_step_penalty += (dist_x + dist_y) * 0.005
+                    # --- Calculate step-wise shaping penalties ---
+                    step_penalty = 0.0
+                    # Distance penalty (encourage getting closer)
+                    dist_x = game_sim.x - game_sim.landing_pad_center_x
+                    dist_y = game_sim.y - game_sim.landing_pad_y
+                    distance_to_pad = np.sqrt(dist_x**2 + dist_y**2)
+                    step_penalty += 0.1 * distance_to_pad  # Penalize distance
+
+                    # Velocity penalty (encourage slow, controlled descent)
+                    # Penalize horizontal speed
+                    step_penalty += 0.5 * abs(game_sim.vx)
+                    # Penalize vertical speed more
+                    step_penalty += 1.0 * abs(game_sim.vy)
+
+                    # Fuel penalty (encourage efficiency)
+                    if action > 0:  # Action 1, 2, or 3 used fuel
+                        step_penalty += 0.2
+
+                    # Step penalty (encourage faster solutions)
+                    step_penalty += 0.1
+
+                    accumulated_step_penalty += step_penalty
+                    # --- End step-wise penalty calculation ---
 
                     state = next_state
                     steps += 1
@@ -441,8 +491,7 @@ class NeuralNetwork():
                 # Calculate terminal penalty based on final state
                 terminal_penalty = self._calculate_terminal_penalty(game_sim,
                                                                     steps)
-                # Final fitness is sum of accumulated step penalties
-                # and terminal penalty
+                # Final fitness
                 fitness_scores[member_id] = accumulated_step_penalty + \
                     terminal_penalty
                 all_steps.append(steps)
@@ -510,8 +559,10 @@ class NeuralNetwork():
             return 0
 
         num_outputs = self._nnsize[-1]
-        inputs = np.array(current_state, dtype=np.float64)
-        outputs = np.zeros(num_outputs, dtype=np.float64)
+        # Determine dtype based on config
+        dtype = np.float32 if nn_config.use_float else np.float64
+        inputs = np.array(current_state, dtype=dtype)
+        outputs = np.zeros(num_outputs, dtype=dtype)
 
         # Use member_id 0 - assuming the loaded network represents the best
         # or the result of the population evolution.
