@@ -84,7 +84,7 @@ game_cfg = SimpleNamespace(
     terrain_y=50,               # set the zero of the terrain
     max_vx=0.5,                 # max horizontal speed when landing
     max_vy=2.0,                 # max vertical speed when landing
-    max_steps=1000,             # max steps per simulation episode
+    max_steps=5000,             # max steps per simulation episode
     current_seed=None           # Seed used for the current pad positions
 )
 
@@ -212,8 +212,8 @@ planet_cfg = SimpleNamespace(
 
 nn_config = SimpleNamespace(
     name="lunar_lander",    # nn name
-    hlayers=[8, 32, 16],    # hidden layer structure
-    use_float=False,        # allow switch between c++ float and double
+    hlayers=[16, 32, 16],   # hidden layer structure
+    use_float=True,         # allow switch between c++ float and double
     seed=5247,              # seed
     top_individuals=10,     # number of top individuals to be selected
     population_size=100,    # population size
@@ -226,10 +226,9 @@ nn_config = SimpleNamespace(
     save_interval=5,        # save every n generations
     epochs=1000,            # number of training epochs
     nb_batches=100,         # keep fix the layout before randomize it
-    fit_min=-2000,          # reset if going below for more than 5 generations
-    fit_streak=5,           # max consecutive low fitness generations,
     multiple_layout=True,   # use multiple layout at once instead of a single
-    layout_nb=100,          # number of multiple layouts
+    layout_nb=50,           # number of multiple layout
+    left_right_ratio=0.5,   # ratio of left vs right layout
     verbose=False
 )
 

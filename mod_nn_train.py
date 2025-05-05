@@ -9,10 +9,10 @@ import numpy as np
 import os
 import sys
 import shutil
+import time
+import math
 
-# Import necessary config objects and functions
-# Alias nn_config to avoid conflict with the main nn_config from mod_config
-from mod_config import cfg, nn_config, game_cfg, \
+from mod_config import cfg, nn_config, game_cfg,  \
     reset_pad_positions, generate_random_pad_positions, set_pad_positions
 from mod_game_logic import GameLogic
 
@@ -24,11 +24,10 @@ if "DEBUG" in os.environ:
 else:
     build_path = os.path.join(build_dir, "Release")
 
-# Add the appropriate build path to sys.path
 sys.path.append(os.path.realpath(build_path))
 
-# Try importing the cpp_nn_py module
 try:
+    # Try importing the cpp_nn_py module
     import cpp_nn_py2 as cpp_nn_py
 except ModuleNotFoundError as e:
     print(f"Error: {e}")
@@ -39,7 +38,8 @@ class NeuralNetwork():
         self._net = None
         self._nGen = 0
         self._nnsize = None
-        self._game_env = None  # Can be initialized later if needed per member
+        self._game_env = None
+        self._start_time = time.time()  # Record initialization time
         pass
 
     def init(self):
@@ -63,7 +63,7 @@ class NeuralNetwork():
         self._net.SetName(nn_config.name)
         self._net.SetMixed(nn_config.mixed_population)
         self._net.CreatePopulation(True)
-        self._nGen = 0  # Start from generation 0 if initializing
+        self._nGen = 0
 
     def load(self, step='last'):
         if nn_config.use_float:
@@ -80,7 +80,8 @@ class NeuralNetwork():
         self._net.Deserialize(full_path)
         # Get current epoch/generation from loaded net
         self._nGen = self._net.GetEpochs()
-        # GameLogic expects 8 inputs and 4 outputs
+        self._start_time = time.time()  # Reset start time on load
+        # GameLogic expects 5 inputs and 4 outputs (Corrected comment)
         self._nnsize = [5] + nn_config.hlayers + [4]
         if nn_config.verbose:
             print(f"Loading network from: {full_path} "
@@ -89,11 +90,21 @@ class NeuralNetwork():
 
     def save(self):
         """Saves the network state and creates a _last copy."""
-        # Construct the base filename
-        base_filename_part = f"{nn_config.name}"
+
+        base_prefix = nn_config.name
+
         if not nn_config.overwrite:
-            base_filename_part += f"_{self._nGen}"
-        filename = f"{base_filename_part}.txt"
+            layout_type = 'm' if nn_config.multiple_layout else 's'
+            nn_size_str = "_".join(map(str, self._nnsize))
+            # Format step number with leading zeros
+            step_num_str = f"{self._nGen:04d}"
+            filename = (f"{base_prefix}_{layout_type}_{nn_size_str}_s"
+                        f"_{step_num_str}.txt")
+        else:
+            # If overwrite is true, maybe use a simpler name or the last format
+            # Or adjust as needed
+            filename = f"{base_prefix}_latest_overwrite.txt"
+
         full_path = os.path.join(nn_config.save_path_nn, filename)
 
         # Construct the "_last" filename
@@ -122,54 +133,65 @@ class NeuralNetwork():
         except Exception as e:
             print(f"Error during network serialization to {full_path}: {e}")
 
+    def _calculate_step_penalty(self, game_sim: GameLogic, action: int) \
+            -> float:
+        """Calculates the penalty applied at each step. Lower score is better.
+        """
+        step_penalty = 0.0
+
+        # Penalty for distance from pad center
+        dist_x = abs(game_sim.x - game_sim.landing_pad_center_x)
+        dist_y = abs(game_sim.y - game_sim.landing_pad_y)
+        step_penalty += (dist_x + dist_y) * 0.001
+
+        # Optional: Penalty for using fuel (if action > 0)
+        if action > 0:
+            step_penalty += 0.01  # Small penalty per thrust action
+
+        return step_penalty
+
     def _calculate_terminal_penalty(self, game_sim: GameLogic,
                                     steps_taken: int) -> float:
         """Calculates the terminal penalty/reward based on the final state.
            Lower score (penalty) is better.
-           - Rewards successful landing.
-           - Penalizes crash, out of fuel, and timeout differently.
-           - Timeout (floating) is penalized most heavily.
         """
         terminal_penalty = 0.0
-        # Calculate final velocity and distance only once
-        final_v_mag = np.sqrt(game_sim.vx**2 + game_sim.vy**2)
-        final_dist_x = abs(game_sim.x - game_sim.landing_pad_center_x)
-        final_dist_y = abs(game_sim.y - game_sim.landing_pad_y)
-        final_dist_to_pad = np.sqrt(final_dist_x**2 + final_dist_y**2)
+
+        # Base penalty for steps taken (encourages efficiency)
+        terminal_penalty += steps_taken * 0.1
+
+        # Distance penalty (applied more heavily at the end)
+        dist_x = abs(game_sim.x - game_sim.landing_pad_center_x)
+        dist_y = abs(game_sim.y - game_sim.landing_pad_y)
+        # Scale distance penalty - higher if further away
+        terminal_penalty += (dist_x + dist_y) * 0.5
 
         if game_sim.landed_successfully:
-            # Large reward for successful landing
-            terminal_penalty -= 2000.0
+            terminal_penalty -= 1000.0  # Big reward (negative penalty)
             # Bonus for remaining fuel
-            terminal_penalty -= game_sim.fuel * 10.0
-            # Small bonus for low final velocity (already implied by landing)
-            terminal_penalty -= final_v_mag * 5.0
+            terminal_penalty -= game_sim.fuel * 2.0
         elif game_sim.crashed:
-            # Penalty for crashing
-            terminal_penalty += 500.0
-            # Penalty based on impact velocity
-            terminal_penalty += final_v_mag * 50.0
-            # Penalty for distance from pad at crash
-            terminal_penalty += final_dist_to_pad * 100.0
+            terminal_penalty += 500.0  # Penalty for crashing
+            # Increase penalty based on final velocity magnitude
+            final_v_mag = np.sqrt(game_sim.vx**2 + game_sim.vy**2)
+            terminal_penalty += final_v_mag * 10.0
         elif game_sim.fuel <= 0 and not game_sim.landed:
-            # Higher penalty for running out of fuel before landing
-            terminal_penalty += 750.0
-            # Penalty for final velocity
-            terminal_penalty += final_v_mag * 75.0
-            # Penalty for final distance from pad
-            terminal_penalty += final_dist_to_pad * 150.0
-        else:  # Timed out (reached max_steps without landing or crashing)
-            # Highest penalty for timing out (floating)
-            terminal_penalty += 1000.0
-            # Significant penalty for final velocity
-            terminal_penalty += final_v_mag * 100.0
-            # Significant penalty for final distance from pad
-            terminal_penalty += final_dist_to_pad * 200.0
+            terminal_penalty += 250.0  # Penalty for running out of fuel in air
 
-        # Note: The base penalty for steps_taken is removed from here.
-        # Step penalties are accumulated in the main training loops.
+        # Add small penalty based on final velocity if not landed successfully
+        if not game_sim.landed_successfully:
+            final_v_mag = np.sqrt(game_sim.vx**2 + game_sim.vy**2)
+            terminal_penalty += final_v_mag * 1.0
 
         return terminal_penalty
+
+    def _format_time(self, seconds):
+        """Formats seconds into mm:ss string."""
+        if seconds < 0:
+            return "00:00"
+        minutes = math.floor(seconds / 60)
+        remaining_seconds = math.floor(seconds % 60)
+        return f"{minutes:02d}:{remaining_seconds:02d}"
 
     def train(self):
         if self._net is None:
@@ -190,7 +212,8 @@ class NeuralNetwork():
         population_size = self._net.GetPopSize()
         num_layouts = nn_config.layout_nb
 
-        print(f"Generating {num_layouts} layouts for training...")
+        if nn_config.verbose:
+            print(f"Generating {num_layouts} layouts for training...")
         layouts = []
         left_to_right_count = 0
         right_to_left_count = 0
@@ -210,27 +233,40 @@ class NeuralNetwork():
             print(f"Initial layouts: {left_to_right_count} left-to-right, "
                   f"{right_to_left_count} right-to-left.")
 
-        # --- Balance Layouts ---
-        diff = abs(left_to_right_count - right_to_left_count)
-        if diff > 1:
-            num_to_flip = diff // 2
-            # Use the imported cfg for screen width
+        # --- Balance Layouts based on Ratio ---
+        ratio = nn_config.left_right_ratio
+        # Validate ratio
+        if not (0.0 <= ratio <= 1.0):
+            print(f"  Warning: Invalid left_right_ratio ({ratio}). "
+                  "Defaulting to 0.5.")
+            ratio = 0.5
+
+        target_ltr_count = round(num_layouts * ratio)
+        current_ltr_count = left_to_right_count
+        num_to_flip = abs(current_ltr_count - target_ltr_count)
+
+        if num_to_flip > 0:
             screen_center_x = cfg.width / 2.0
-            if left_to_right_count > right_to_left_count:
-                excess_direction = 'ltr'
+            if current_ltr_count > target_ltr_count:
+                # Need to flip LTR to RTL
+                direction_to_find = 'ltr'
                 if nn_config.verbose:
-                    print(f"  Balancing: Flipping {num_to_flip} left-to-right "
-                          "layouts.")
+                    print(f"  Balancing (Ratio {ratio}): Flipping "
+                          f"{num_to_flip} left-to-right layouts to "
+                          f"reach target {target_ltr_count}.")
             else:
-                excess_direction = 'rtl'
+                # Need to flip RTL to LTR
+                direction_to_find = 'rtl'
                 if nn_config.verbose:
-                    print(f"  Balancing: Flipping {num_to_flip} right-to-left "
-                          "layouts.")
+                    print(f"  Balancing (Ratio {ratio}): Flipping "
+                          f"{num_to_flip} right-to-left layouts to "
+                          f"reach target {target_ltr_count}.")
 
             flipped_count = 0
+            # Iterate through layouts to find candidates for flipping
             for i in range(num_layouts):
                 if flipped_count >= num_to_flip:
-                    break
+                    break  # Flipped enough layouts
 
                 layout = layouts[i]
                 spad_center = layout['spad_x1'] + game_cfg.spad_width / 2
@@ -238,11 +274,12 @@ class NeuralNetwork():
                 current_direction = 'ltr' if spad_center < lpad_center \
                     else 'rtl'
 
-                if current_direction == excess_direction:
-                    # Reflect positions around the screen center
+                if current_direction == direction_to_find:
+                    # This layout is a candidate for flipping
                     old_spad_x1 = layout['spad_x1']
                     old_lpad_x1 = layout['lpad_x1']
-                    # Calculate new top-left corner based on reflecting
+
+                    # Reflect positions around the screen center
                     old_spad_center = old_spad_x1 + game_cfg.spad_width / 2
                     old_lpad_center = old_lpad_x1 + game_cfg.lpad_width / 2
                     new_spad_center = 2 * screen_center_x - old_spad_center
@@ -251,12 +288,12 @@ class NeuralNetwork():
                     new_lpad_x1 = new_lpad_center - game_cfg.lpad_width / 2
 
                     # Ensure pads stay within bounds after flipping
-                    # Use cfg.width for boundary check
                     new_spad_x1 = max(0, min(new_spad_x1,
                                              cfg.width - game_cfg.spad_width))
                     new_lpad_x1 = max(0, min(new_lpad_x1,
                                              cfg.width - game_cfg.lpad_width))
 
+                    # Apply the flip
                     layouts[i]['spad_x1'] = new_spad_x1
                     layouts[i]['lpad_x1'] = new_lpad_x1
 
@@ -267,22 +304,33 @@ class NeuralNetwork():
                               f"New Start={new_spad_x1:.1f}, "
                               f"New Landing={new_lpad_x1:.1f}")
 
-                    # Update counts
-                    if excess_direction == 'ltr':
+                    # Update counts immediately after flipping
+                    if direction_to_find == 'ltr':
                         left_to_right_count -= 1
                         right_to_left_count += 1
-                    else:
+                    else:  # direction_to_find == 'rtl'
                         right_to_left_count -= 1
                         left_to_right_count += 1
                     flipped_count += 1
 
-            print(f"Layouts: {left_to_right_count} left-to-right, "
-                  f"{right_to_left_count} right-to-left.")
+            # Recalculate current_ltr_count after flips for final report
+            current_ltr_count = left_to_right_count
+            if nn_config.verbose:
+                print(f"Layouts after ratio balancing: {current_ltr_count} "
+                      "left-to-right "
+                      f"({current_ltr_count/num_layouts*100:.1f}%), "
+                      f"{right_to_left_count} right-to-left.")
+        else:
+            if nn_config.verbose:
+                print(f"Layouts already meet target ratio ({ratio}): "
+                      f"{left_to_right_count} left-to-right, "
+                      f"{right_to_left_count} right-to-left.")
+        print(f"Layouts: {left_to_right_count} left-to-right, "
+              f"{right_to_left_count} right-to-left.")
         # --- End Balance Layouts ---
 
-        low_fitness_streak = 0  # Counter for consecutive low fit generations
-
         for gen in range(self._nGen, self._nGen + nn_config.epochs):
+            gen_start_time = time.time()
             print(f"\n--- Generation {gen + 1} ---")
             fitness_scores = np.zeros(population_size, dtype=np.float64)
             all_member_steps = []  # Track average steps per member
@@ -310,42 +358,17 @@ class NeuralNetwork():
                     while not done and steps < game_cfg.max_steps:
                         inputs = np.array(state, dtype=dtype)
                         outputs = np.zeros(num_outputs, dtype=dtype)
-
                         # Get action from NN for the current member
                         self._net.feedforward(inputs, outputs, member_id,
-                                              False)
+                                              True)
                         action = np.argmax(outputs)
-
                         # Update game state
                         next_state, done = game_sim.update(action)
-
-                        # --- Calculate step-wise shaping penalties ---
-                        step_penalty = 0.0
-                        # Distance penalty (encourage getting closer)
-                        dist_x = game_sim.x - game_sim.landing_pad_center_x
-                        dist_y = game_sim.y - game_sim.landing_pad_y
-                        distance_to_pad = np.sqrt(dist_x**2 + dist_y**2)
-                        step_penalty += 0.1 * distance_to_pad
-
-                        # Velocity penalty (encourage slow, controlled descent)
-                        # Penalize horizontal speed
-                        step_penalty += 0.5 * abs(game_sim.vx)
-                        # Penalize vertical speed more
-                        step_penalty += 1.0 * abs(game_sim.vy)
-
-                        # Fuel penalty (encourage efficiency)
-                        if action > 0:  # Action 1, 2, or 3 used fuel
-                            step_penalty += 0.2
-
-                        # Step penalty (encourage faster solutions)
-                        step_penalty += 0.1
-
-                        accumulated_step_penalty += step_penalty
-                        # --- End step-wise penalty calculation ---
-
+                        # Calculate step penalty
+                        accumulated_step_penalty += \
+                            self._calculate_step_penalty(game_sim, action)
                         state = next_state
                         steps += 1
-
                         if done:
                             break
 
@@ -364,52 +387,32 @@ class NeuralNetwork():
                 fitness_scores[member_id] = average_fitness
                 # Store average steps per layout for this member
                 all_member_steps.append(total_steps_for_member / num_layouts)
-
             # Sort average fitness scores (ascending, lower is better)
             sorted_indices = np.argsort(fitness_scores)
-
             # Update NN weights and biases based on sorted average fitness
             self._net.UpdateWeightsAndBiases(sorted_indices)
-
             # Create the next population
             self._net.CreatePopulation(nn_config.elitism)
-
             # Update internal epoch counter in the C++ object
             self._net.UpdateEpochs(1)  # Increment epoch by 1
             self._nGen = self._net.GetEpochs()  # Sync python counter
-
+            # Calculate times
+            gen_end_time = time.time()
+            gen_duration = gen_end_time - gen_start_time
+            total_elapsed_time = gen_end_time - self._start_time
             # Print generation summary using average values
             best_avg_fitness = fitness_scores[sorted_indices[0]]
             avg_fitness = np.mean(fitness_scores)
             # Calculate overall average steps across all members and layouts
             avg_steps = np.mean(all_member_steps)
-            print(f"Generation {self._nGen} complete.")
+            print(f"Generation {self._nGen} complete. "
+                  f"(Took: {self._format_time(gen_duration)}, "
+                  f"Total: {self._format_time(total_elapsed_time)})")
             print(
                 f"  Best Avg Fitness: {best_avg_fitness:.4f} (Member "
                 f"{sorted_indices[0]})")
             print(f"  Avg Fitness:      {avg_fitness:.4f}")
             print(f"  Avg Steps/Layout: {avg_steps:.1f}")
-
-            # --- Check for sustained low fitness (using best average fitness)
-            if best_avg_fitness < nn_config.fit_min:
-                low_fitness_streak += 1
-                if nn_config.verbose:
-                    print(f"  Low average fitness detected (Streak: "
-                          f"{low_fitness_streak}).")
-            else:
-                if low_fitness_streak > 0 and nn_config.verbose:
-                    print("  Average fitness recovered, "
-                          "resetting low fitness streak.")
-                low_fitness_streak = 0
-
-            # If layouts needed to change, logic would go here.
-            if low_fitness_streak > nn_config.fit_streak:
-                print(f"--- Average fitness below {nn_config.fit_min} for "
-                      f"{low_fitness_streak} generations. "
-                      "Consider adjusting parameters or "
-                      "layout generation. ---")
-                # Action to take? Regenerate layouts? Stop?
-                low_fitness_streak = 0  # Reset streak
 
             # Save network periodically
             if nn_config.save_nn and (
@@ -423,9 +426,8 @@ class NeuralNetwork():
         num_outputs = self._nnsize[-1]
         population_size = self._net.GetPopSize()
 
-        low_fitness_streak = 0  # Counter for consecutive low fit generations
-
         for gen in range(self._nGen, self._nGen + nn_config.epochs):
+            gen_start_time = time.time()
             print(f"\n--- Generation {gen + 1} ---")
             # Reset pad positions every nb_batches generations
             if gen % nn_config.nb_batches == 0:
@@ -443,51 +445,24 @@ class NeuralNetwork():
                 done = False
                 accumulated_step_penalty = 0.0
                 steps = 0
-
                 # Determine dtype based on config
                 dtype = np.float32 if nn_config.use_float else np.float64
 
                 while not done and steps < game_cfg.max_steps:
                     inputs = np.array(state, dtype=dtype)
                     outputs = np.zeros(num_outputs, dtype=dtype)
-
                     # Get action from NN
-                    self._net.feedforward(inputs, outputs, member_id, False)
+                    self._net.feedforward(inputs, outputs, member_id, True)
                     action = np.argmax(outputs)
-
                     # Update game state - returns (state, done)
                     next_state, done = game_sim.update(action)
-
-                    # --- Calculate step-wise shaping penalties ---
-                    step_penalty = 0.0
-                    # Distance penalty (encourage getting closer)
-                    dist_x = game_sim.x - game_sim.landing_pad_center_x
-                    dist_y = game_sim.y - game_sim.landing_pad_y
-                    distance_to_pad = np.sqrt(dist_x**2 + dist_y**2)
-                    step_penalty += 0.1 * distance_to_pad  # Penalize distance
-
-                    # Velocity penalty (encourage slow, controlled descent)
-                    # Penalize horizontal speed
-                    step_penalty += 0.5 * abs(game_sim.vx)
-                    # Penalize vertical speed more
-                    step_penalty += 1.0 * abs(game_sim.vy)
-
-                    # Fuel penalty (encourage efficiency)
-                    if action > 0:  # Action 1, 2, or 3 used fuel
-                        step_penalty += 0.2
-
-                    # Step penalty (encourage faster solutions)
-                    step_penalty += 0.1
-
-                    accumulated_step_penalty += step_penalty
-                    # --- End step-wise penalty calculation ---
-
+                    # Calculate step penalty
+                    accumulated_step_penalty += \
+                        self._calculate_step_penalty(game_sim, action)
                     state = next_state
                     steps += 1
-
                     if done:
                         break
-
                 # Calculate terminal penalty based on final state
                 terminal_penalty = self._calculate_terminal_penalty(game_sim,
                                                                     steps)
@@ -495,49 +470,31 @@ class NeuralNetwork():
                 fitness_scores[member_id] = accumulated_step_penalty + \
                     terminal_penalty
                 all_steps.append(steps)
-
             # Sort fitness scores (ascending, lower is better) and get indices
             sorted_indices = np.argsort(fitness_scores)
-
             # Update NN weights and biases based on sorted fitness
             self._net.UpdateWeightsAndBiases(sorted_indices)
-
             # Create the next population
             self._net.CreatePopulation(nn_config.elitism)
-
             # Update internal epoch counter in the C++ object
             self._net.UpdateEpochs(1)  # Increment epoch by 1
             self._nGen = self._net.GetEpochs()  # Sync python counter
-
+            # Calculate times
+            gen_end_time = time.time()
+            gen_duration = gen_end_time - gen_start_time
+            total_elapsed_time = gen_end_time - self._start_time
             # Print generation summary
             best_fitness = fitness_scores[sorted_indices[0]]
             avg_fitness = np.mean(fitness_scores)
             avg_steps = np.mean(all_steps)
-            print(f"Generation {self._nGen} complete.")
+            print(f"Generation {self._nGen} complete. "
+                  f"(Took: {self._format_time(gen_duration)}, "
+                  f"Total: {self._format_time(total_elapsed_time)})")
             print(
                 f"  Best Fitness: {best_fitness:.4f} (Member "
                 f"{sorted_indices[0]})")
             print(f"  Avg Fitness:  {avg_fitness:.4f}")
             print(f"  Avg Steps:    {avg_steps:.1f}")
-
-            # --- Check for sustained low fitness and reset pads if needed ---
-            if best_fitness < nn_config.fit_min:
-                low_fitness_streak += 1
-                if nn_config.verbose:
-                    print(f"  Low fitness detected (Streak: "
-                          f"{low_fitness_streak}).")
-            else:
-                if low_fitness_streak > 0 and nn_config.verbose:
-                    print("  Fitness recovered, resetting low fitness streak.")
-                low_fitness_streak = 0
-
-            if low_fitness_streak > nn_config.fit_streak:
-                print(f"--- Fitness below {nn_config.fit_min} for "
-                      f"{low_fitness_streak} generations. "
-                      "Resetting pad positions. ---")
-                reset_pad_positions()
-                low_fitness_streak = 0  # Reset streak after triggering reset
-            # ----------------------------------------------------------------
 
             # Save network periodically
             if nn_config.save_nn and (
@@ -564,17 +521,16 @@ class NeuralNetwork():
         inputs = np.array(current_state, dtype=dtype)
         outputs = np.zeros(num_outputs, dtype=dtype)
 
-        # Use member_id 0 - assuming the loaded network represents the best
+        # Use member_id 0 - in the loaded network represents the best
         # or the result of the population evolution.
         # The GA manages this internally.
-        # singleReturn=False as per the pybind definition
         try:
-            self._net.feedforward(inputs, outputs, 0, False)
+            self._net.feedforward(inputs, outputs, 0, True)
             action = np.argmax(outputs)
             return action
         except Exception as e:
             print(f"Error during feedforward: {e}")
-            return 0  # Return default action on error
+            return 0
 
 
 if __name__ == '__main__':
