@@ -1,24 +1,30 @@
-#ifndef GAME_LOGIC_H
-#define GAME_LOGIC_H
+#ifndef _GAME_LOGIC_H_87DBA366D1A949809C99341B7769AAC9_
+#define _GAME_LOGIC_H_87DBA366D1A949809C99341B7769AAC9_
 
+/******************/
+/*  game_logic.h  */
+/*  Version 1.0   */
+/*   2023/05/05   */
+/******************/
+
+#include <cmath>
 #include <vector>
-#include <cmath> // For std::abs
 
 // Forward declaration if config struct/class is used directly
 // Or include config header if available and suitable
 // For now, assume config values are passed during init or reset
 
-class GameLogicCpp {
-public:
-    // --- Public Member Variables (mirroring Cython public attributes) ---
+class GameLogicCpp
+{
+  public:
     double x, y, vx, vy, fuel;
     bool landed, crashed, landed_successfully;
     double landing_pad_center_x, landing_pad_y;
-    bool no_print; // For optional printing
+    bool no_print;   // For optional printing
     int last_action; // Added to store the last action taken
 
     // --- Configuration parameters (to be set in constructor/reset) ---
-private:
+  private:
     // Physics/State
     double ax, ay; // Internal acceleration state
     int time_step;
@@ -28,23 +34,20 @@ private:
     double pcfg_g;
     double lcfg_max_fuel;
     double lpad_x1, lpad_width, pad_y1; // Landing pad
-    double spad_width; // Starting pad width (needed for reset calculation)
-    double max_safe_vx, max_safe_vy; // Store absolute values
+    double spad_width;                  // Starting pad width (needed for reset calculation)
+    double max_safe_vx, max_safe_vy;    // Store absolute values
     double cfg_width, cfg_height;
     double lcfg_width, lcfg_height; // Lander dimensions
     double pcfg_mu_x, pcfg_mu_y;
     double gcfg_terrain_y;
     double ground_level; // Calculated in reset
 
-    // Action log (optional, could be omitted in C++ for performance)
-    // std::vector<int> action_log;
-
     // --- Private Helper Methods ---
     void apply_action(int action);
     void update_physics();
     void check_landing_crash();
 
-public:
+  public:
     // --- Constructor ---
     // Pass necessary config values directly or via a struct/class
     GameLogicCpp(bool no_print_flag = false);
@@ -55,38 +58,30 @@ public:
     void reset(double spad_x1, double lpad_x1_new);
 
     // The main update function
-    // Returns state vector and done flag
     std::pair<std::vector<double>, bool> update(int action);
+    // New update function: writes state to provided buffer, returns done flag
+    bool update(int action, double* pStateOutput, size_t stateOutputSize);
 
     bool is_done() const; // Make const as it doesn't change state
 
-    // Returns state vector for NN
-    std::vector<double> get_state() const; // Make const
-
-    // Optional: Method to get render info (might return a struct)
-    // struct RenderInfo { double x, y, vx, vy, fuel; int last_action; bool landed, crashed, landed_successfully; };
-    // RenderInfo get_render_info() const;
+    std::vector<double> get_state() const;
+    void get_state(double* pOutputs, size_t outputsSize) const;
 
     // Method to explicitly set config values if not passed in constructor
-    void set_config(
-        double cfg_w, double cfg_h,
-        double gcfg_pad_y1, double gcfg_terrain_y_val,
-        double gcfg_max_v_x, double gcfg_max_v_y,
-        double pcfg_gravity, double pcfg_fric_x, double pcfg_fric_y,
-        double lcfg_w, double lcfg_h, double lcfg_fuel,
-        double gcfg_spad_width, // Starting pad width
-        double gcfg_lpad_width, // Landing pad width
-        const std::vector<double>& gcfg_x0_vec,
-        const std::vector<double>& gcfg_v0_vec,
-        const std::vector<double>& gcfg_a0_vec
-    );
+    void set_config(double cfg_w, double cfg_h, double gcfg_pad_y1, double gcfg_terrain_y_val, double gcfg_max_v_x,
+                    double gcfg_max_v_y, double pcfg_gravity, double pcfg_fric_x, double pcfg_fric_y, double lcfg_w,
+                    double lcfg_h, double lcfg_fuel,
+                    double gcfg_spad_width, // Starting pad width
+                    double gcfg_lpad_width, // Landing pad width
+                    const std::vector<double>& gcfg_x0_vec, const std::vector<double>& gcfg_v0_vec,
+                    const std::vector<double>& gcfg_a0_vec);
 
     // Method to update pad positions dynamically (used in training)
     void update_pad_positions(double spad_x1, double lpad_x1_new);
 
-private:
+  private:
     // Helper to recalculate derived values after config/pad changes
     void recalculate_derived_values();
 };
 
-#endif // GAME_LOGIC_H
+#endif

@@ -12,7 +12,7 @@ import shutil
 import time
 import math
 
-from mod_config import cfg, nn_config, game_cfg,  \
+from mod_config import cfg, nn_config, game_cfg, planet_cfg, lander_cfg, \
     reset_pad_positions, generate_random_pad_positions, set_pad_positions
 
 cwd = os.getcwd()
@@ -205,7 +205,6 @@ class NeuralNetwork():
             self.train_single_layout()
 
     def train_multiple_layout(self):
-        num_outputs = self._nnsize[-1]
         population_size = self._net.GetPopSize()
         num_layouts = nn_config.layout_nb
 
@@ -339,13 +338,36 @@ class NeuralNetwork():
                 for layout_idx, layout_info in enumerate(layouts):
                     # Use the C++ GameLogic implementation
                     game_sim = cpp_game_logic.GameLogicCpp(no_print_flag=True)
-                    # Set the specific layout for this run
                     set_pad_positions(layout_info['spad_x1'],
                                       layout_info['lpad_x1'])
-                    # Important: Reset game state for the new layout
-                    game_sim.reset()
 
-                    state = game_sim.get_state()
+                    # --- Configure the C++ Game Logic Instance ---
+                    # Use the current global config values
+                    game_sim.set_config(
+                        cfg_w=cfg.width,
+                        cfg_h=cfg.height, gcfg_pad_y1=game_cfg.pad_y1,
+                        gcfg_terrain_y_val=game_cfg.terrain_y,
+                        gcfg_max_v_x=game_cfg.max_vx,
+                        gcfg_max_v_y=game_cfg.max_vy,
+                        pcfg_gravity=planet_cfg.g,
+                        pcfg_fric_x=planet_cfg.mu_x,
+                        pcfg_fric_y=planet_cfg.mu_y,
+                        lcfg_w=lander_cfg.width, lcfg_h=lander_cfg.height,
+                        lcfg_fuel=lander_cfg.max_fuel,
+                        gcfg_spad_width=game_cfg.spad_width,
+                        gcfg_lpad_width=game_cfg.lpad_width,
+                        gcfg_x0_vec=game_cfg.x0.tolist(),
+                        gcfg_v0_vec=game_cfg.v0.tolist(),
+                        gcfg_a0_vec=game_cfg.a0.tolist()
+                    )
+
+                    # --- Reset the C++ logic using the CURRENT pad pos  ---
+                    # Ensures the instance uses the specific layout for the run
+                    game_sim.reset(game_cfg.spad_x1, game_cfg.lpad_x1)
+
+                    # Pre-allocate state buffer
+                    state_buffer = np.zeros(5, dtype=np.float64)
+                    game_sim.get_state(state_buffer) # Get initial state into buffer
                     done = False
                     accumulated_step_penalty = 0.0
                     steps = 0
@@ -354,18 +376,15 @@ class NeuralNetwork():
                     dtype = np.float32 if nn_config.use_float else np.float64
 
                     while not done and steps < game_cfg.max_steps:
-                        inputs = np.array(state, dtype=dtype)
-                        outputs = np.zeros(num_outputs, dtype=dtype)
-                        # Get action from NN for the current member
-                        self._net.feedforward(inputs, outputs, member_id,
-                                              True)
-                        action = np.argmax(outputs)
-                        # Update game state
-                        next_state, done = game_sim.update(action)
+                        inputs = np.array(state_buffer, dtype=dtype) # Use buffer
+                        # Get action index directly from NN
+                        action = self._net.feedforwardIndex(inputs, member_id)
+                        # Update game state - writes state into buffer, returns done
+                        done = game_sim.update(action, state_buffer)
                         # Calculate step penalty
                         accumulated_step_penalty += \
                             self._calculate_step_penalty(game_sim, action)
-                        state = next_state
+                        # state = next_state # No longer needed, buffer updated in-place
                         steps += 1
                         if done:
                             break
@@ -421,7 +440,6 @@ class NeuralNetwork():
         print("\nTraining finished.")
 
     def train_single_layout(self):
-        num_outputs = self._nnsize[-1]
         population_size = self._net.GetPopSize()
 
         for gen in range(self._nGen, self._nGen + nn_config.epochs):
@@ -440,7 +458,34 @@ class NeuralNetwork():
             for member_id in range(population_size):
                 # Use the C++ GameLogic implementation
                 game_sim = cpp_game_logic.GameLogicCpp(no_print_flag=True)
-                state = game_sim.get_state()
+
+                # --- Configure the C++ Game Logic Instance ---
+                # Use the current global config values
+                game_sim.set_config(
+                    cfg_w=cfg.width,
+                    cfg_h=cfg.height, gcfg_pad_y1=game_cfg.pad_y1,
+                    gcfg_terrain_y_val=game_cfg.terrain_y,
+                    gcfg_max_v_x=game_cfg.max_vx,
+                    gcfg_max_v_y=game_cfg.max_vy,
+                    pcfg_gravity=planet_cfg.g,
+                    pcfg_fric_x=planet_cfg.mu_x,
+                    pcfg_fric_y=planet_cfg.mu_y,
+                    lcfg_w=lander_cfg.width, lcfg_h=lander_cfg.height,
+                    lcfg_fuel=lander_cfg.max_fuel,
+                    gcfg_spad_width=game_cfg.spad_width,
+                    gcfg_lpad_width=game_cfg.lpad_width,
+                    gcfg_x0_vec=game_cfg.x0.tolist(),
+                    gcfg_v0_vec=game_cfg.v0.tolist(),
+                    gcfg_a0_vec=game_cfg.a0.tolist()
+                )
+
+                # --- Reset the C++ logic using the CURRENT pad positions ---
+                # Ensures the instance uses the potentially randomized pads
+                game_sim.reset(game_cfg.spad_x1, game_cfg.lpad_x1)
+
+                # Pre-allocate state buffer
+                state_buffer = np.zeros(5, dtype=np.float64)
+                game_sim.get_state(state_buffer) # Get initial state into buffer
                 done = False
                 accumulated_step_penalty = 0.0
                 steps = 0
@@ -448,17 +493,15 @@ class NeuralNetwork():
                 dtype = np.float32 if nn_config.use_float else np.float64
 
                 while not done and steps < game_cfg.max_steps:
-                    inputs = np.array(state, dtype=dtype)
-                    outputs = np.zeros(num_outputs, dtype=dtype)
-                    # Get action from NN
-                    self._net.feedforward(inputs, outputs, member_id, True)
-                    action = np.argmax(outputs)
-                    # Update game state - returns (state, done)
-                    next_state, done = game_sim.update(action)
+                    inputs = np.array(state_buffer, dtype=dtype) # Use buffer
+                    # Get action index directly from NN
+                    action = self._net.feedforwardIndex(inputs, member_id)
+                    # Update game state - writes state into buffer, returns done
+                    done = game_sim.update(action, state_buffer)
                     # Calculate step penalty
                     accumulated_step_penalty += \
                         self._calculate_step_penalty(game_sim, action)
-                    state = next_state
+                    # state = next_state # No longer needed, buffer updated in-place
                     steps += 1
                     if done:
                         break
@@ -514,19 +557,15 @@ class NeuralNetwork():
             print("Error: Network size not determined (load network first).")
             return 0
 
-        num_outputs = self._nnsize[-1]
         # Determine dtype based on config
         dtype = np.float32 if nn_config.use_float else np.float64
         inputs = np.array(current_state, dtype=dtype)
-        outputs = np.zeros(num_outputs, dtype=dtype)
 
         # Use member_id 0 - in the loaded network represents the best
         # or the result of the population evolution.
         # The GA manages this internally.
         try:
-            self._net.feedforward(inputs, outputs, 0, True)
-            action = np.argmax(outputs)
-            return action
+            return self._net.feedforwardIndex(inputs, 0)
         except Exception as e:
             print(f"Error during feedforward: {e}")
             return 0

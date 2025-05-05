@@ -15,6 +15,7 @@ import glob
 import sys
 import os
 from types import SimpleNamespace
+import numpy as np # Import numpy
 
 cwd = os.getcwd()
 build_dir = os.path.join(cwd, "./externals/ma-libs/build")
@@ -35,7 +36,6 @@ def draw_game(screen: pygame.Surface, logic: cpp_game_logic.GameLogicCpp,
               visuals: LanderVisuals,
               sounds: SimpleNamespace, font: pygame.font.Font):
     """Renders the current game state."""
-    # Access public members directly instead of get_render_info()
     lander_x = logic.x
     lander_y = logic.y
     fuel = logic.fuel
@@ -68,14 +68,14 @@ def draw_game(screen: pygame.Surface, logic: cpp_game_logic.GameLogicCpp,
             lander_x + visuals.width / 2 - visuals.vf_width / 2,
             lander_y + visuals.height / 2 + visuals.vf_yoffset))
         play_sound = True
-    elif last_action == 2 and fuel > 0:  # Left Thrust
-        screen.blit(scaled_images["rflames"], (  # Right flames for left thrust
+    elif last_action == 2 and fuel > 0:
+        screen.blit(scaled_images["rflames"], (
             lander_x + visuals.width + visuals.hf_width +
             2 * visuals.hf_xoffset_r,
             lander_y - visuals.hf_yoffset_r))
         play_sound = True
-    elif last_action == 3 and fuel > 0:  # Right Thrust
-        screen.blit(scaled_images["lflames"], (  # Left flames for right thrust
+    elif last_action == 3 and fuel > 0:
+        screen.blit(scaled_images["lflames"], (
             lander_x - visuals.hf_width - visuals.hf_xoffset_l,
             lander_y - visuals.hf_yoffset_l))
         play_sound = True
@@ -124,7 +124,6 @@ def game_loop(mode: str):
 
     # --- Configure the C++ Game Logic ---
     # Configs are available from the top-level import
-
     logic.set_config(
         cfg_w=cfg.width,
         cfg_h=cfg.height, gcfg_pad_y1=game_cfg.pad_y1,
@@ -158,6 +157,9 @@ def game_loop(mode: str):
     has_started = False  # Track if player has initiated movement
     frame_count = 0      # Initialize frame counter for saving images
 
+    # Pre-allocate NumPy array for state buffer (size 5, dtype float64)
+    state_buffer = np.zeros(5, dtype=np.float64)
+
     while running:
         clock.tick(cfg.fps)
         action = 0  # Default action: Noop
@@ -187,10 +189,10 @@ def game_loop(mode: str):
                 elif keys[pygame.K_RIGHT]:
                     action = 3
             elif mode == 'nn_play':
-                # Get state for NN
-                current_state = logic.get_state()
-                # Get action from NN
-                nn_action = NN.get_action(current_state)
+                # Get state for NN by writing into the buffer
+                logic.get_state(state_buffer)
+                # Get action from NN using the buffer
+                nn_action = NN.get_action(state_buffer)
 
                 # Determine action, potentially forcing start after 2 seconds
                 if not has_started:
@@ -212,8 +214,8 @@ def game_loop(mode: str):
         # Only update logic if game has started (player moved or NN acted)
         # and game is not over
         if has_started and not game_over:
-            # logic.update now returns (state, done)
-            state, done = logic.update(action)
+            # logic.update now writes state into buffer and returns only done
+            done = logic.update(action, state_buffer)
             if done:
                 game_over = True
                 # Access public members directly
