@@ -46,15 +46,12 @@ Further update of the submodule can be done with the command:
    source "venv/bin/activate" #venv/Scripts/activate on MINGW
    ```
 
-5. Compile the libraries in `ma-libs`
+5. Compile the libraries and the game logic
   ```
-  cd externals/ma-libs
-  ./cbuild.sh --build-type Debug --cmake-params "-DCPP_LIBNN=ON -DPYTHON_LIBNN=ON"
-  ./cbuild.sh --build-type Release --cmake-params "-DCPP_LIBNN=ON -DPYTHON_LIBNN=ON"
-  cd ../..
+  ./build_libs.sh
   ```
 
-  If any error or missing dependencies please look at the instructions [here](https://github.com/azimonti/ma-libs)
+  If any error or missing dependencies for `ma-libs` please look at the instructions [here](https://github.com/azimonti/ma-libs)
 
 
 6. Run the program

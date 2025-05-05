@@ -14,21 +14,17 @@ import math
 
 from mod_config import cfg, nn_config, game_cfg,  \
     reset_pad_positions, generate_random_pad_positions, set_pad_positions
-from mod_game_logic import GameLogic
 
 cwd = os.getcwd()
 build_dir = os.path.join(cwd, "./externals/ma-libs/build")
-
 if "DEBUG" in os.environ:
     build_path = os.path.join(build_dir, "Debug")
 else:
     build_path = os.path.join(build_dir, "Release")
-
 sys.path.append(os.path.realpath(build_path))
-
 try:
-    # Try importing the cpp_nn_py module
     import cpp_nn_py2 as cpp_nn_py
+    import cpp_game_logic
 except ModuleNotFoundError as e:
     print(f"Error: {e}")
 
@@ -39,7 +35,7 @@ class NeuralNetwork():
         self._nGen = 0
         self._nnsize = None
         self._game_env = None
-        self._start_time = time.time()  # Record initialization time
+        self._start_time = time.time()
         pass
 
     def init(self):
@@ -133,8 +129,8 @@ class NeuralNetwork():
         except Exception as e:
             print(f"Error during network serialization to {full_path}: {e}")
 
-    def _calculate_step_penalty(self, game_sim: GameLogic, action: int) \
-            -> float:
+    def _calculate_step_penalty(self, game_sim: cpp_game_logic.GameLogicCpp,
+                                action: int) -> float:
         """Calculates the penalty applied at each step. Lower score is better.
         """
         step_penalty = 0.0
@@ -150,7 +146,8 @@ class NeuralNetwork():
 
         return step_penalty
 
-    def _calculate_terminal_penalty(self, game_sim: GameLogic,
+    def _calculate_terminal_penalty(self,
+                                    game_sim: cpp_game_logic.GameLogicCpp,
                                     steps_taken: int) -> float:
         """Calculates the terminal penalty/reward based on the final state.
            Lower score (penalty) is better.
@@ -340,7 +337,8 @@ class NeuralNetwork():
                 total_steps_for_member = 0
 
                 for layout_idx, layout_info in enumerate(layouts):
-                    game_sim = GameLogic(no_print=True)
+                    # Use the C++ GameLogic implementation
+                    game_sim = cpp_game_logic.GameLogicCpp(no_print_flag=True)
                     # Set the specific layout for this run
                     set_pad_positions(layout_info['spad_x1'],
                                       layout_info['lpad_x1'])
@@ -440,7 +438,8 @@ class NeuralNetwork():
             all_steps = []  # Track steps per member for info
 
             for member_id in range(population_size):
-                game_sim = GameLogic(no_print=True)
+                # Use the C++ GameLogic implementation
+                game_sim = cpp_game_logic.GameLogicCpp(no_print_flag=True)
                 state = game_sim.get_state()
                 done = False
                 accumulated_step_penalty = 0.0

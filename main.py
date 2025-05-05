@@ -5,6 +5,10 @@
 /*   2025/04/27   */
 /******************/
 '''
+from mod_lander import LanderVisuals
+from mod_config import palette, cfg, game_cfg,  planet_cfg, lander_cfg, \
+    reset_pad_positions
+from mod_nn_train import NeuralNetwork
 import pygame
 import argparse
 import glob
@@ -12,39 +16,46 @@ import sys
 import os
 from types import SimpleNamespace
 
-from mod_config import palette, cfg, game_cfg as gcfg, reset_pad_positions
-from mod_game_logic import GameLogic
-from mod_lander import LanderVisuals  # Renamed from Lander
-# Import NN functions and training loop from train_nn.py
-from mod_nn_train import NeuralNetwork
+cwd = os.getcwd()
+build_dir = os.path.join(cwd, "./externals/ma-libs/build")
+if "DEBUG" in os.environ:
+    build_path = os.path.join(build_dir, "Debug")
+else:
+    build_path = os.path.join(build_dir, "Release")
+sys.path.append(os.path.realpath(build_path))
+try:
+    import cpp_game_logic
+except ModuleNotFoundError as e:
+    print(f"Error: {e}")
 
 c = palette
 
 
-def draw_game(screen: pygame.Surface, logic: GameLogic, visuals: LanderVisuals,
+def draw_game(screen: pygame.Surface, logic: cpp_game_logic.GameLogicCpp,
+              visuals: LanderVisuals,
               sounds: SimpleNamespace, font: pygame.font.Font):
     """Renders the current game state."""
-    render_info = logic.get_render_info()
-    lander_x = render_info["x"]
-    lander_y = render_info["y"]
-    fuel = render_info["fuel"]
-    vx = render_info["vx"]
-    vy = render_info["vy"]
-    last_action = render_info["last_action"]
+    # Access public members directly instead of get_render_info()
+    lander_x = logic.x
+    lander_y = logic.y
+    fuel = logic.fuel
+    vx = logic.vx
+    vy = logic.vy
+    last_action = logic.last_action  # Use the exposed member variable
 
     # Clear screen
     screen.fill(c.k)
 
     # Draw terrain
     pygame.draw.rect(screen, c.w, (
-        0, cfg.height - gcfg.terrain_y, cfg.width, gcfg.terrain_y))
+        0, cfg.height - game_cfg.terrain_y, cfg.width, game_cfg.terrain_y))
     # Draw pads
     pygame.draw.rect(screen, c.r, (
-        gcfg.spad_x1, gcfg.pad_y1, gcfg.spad_width,
-        gcfg.pad_height))
+        game_cfg.spad_x1, game_cfg.pad_y1, game_cfg.spad_width,
+        game_cfg.pad_height))
     pygame.draw.rect(screen, c.g, (
-        gcfg.lpad_x1, gcfg.pad_y1, gcfg.lpad_width,
-        gcfg.pad_height))
+        game_cfg.lpad_x1, game_cfg.pad_y1, game_cfg.lpad_width,
+        game_cfg.pad_height))
 
     # Draw Lander
     scaled_images = visuals.get_scaled_images()
@@ -88,6 +99,8 @@ def draw_game(screen: pygame.Surface, logic: GameLogic, visuals: LanderVisuals,
 
 def game_loop(mode: str):
     """Runs the main game loop for human play or NN play."""
+    # Configs are now imported at the top level
+
     pygame.init()
     screen = pygame.display.set_mode((cfg.width, cfg.height))
     pygame.display.set_caption("Lunar Lander")
@@ -105,8 +118,33 @@ def game_loop(mode: str):
             cfg.with_sounds = False  # Disable sound if init fails
 
     # Initialize Game Logic and Visuals
-    logic = GameLogic()
+    # Use the C++ GameLogic implementation
+    logic = cpp_game_logic.GameLogicCpp(no_print_flag=False)
     visuals = LanderVisuals()  # Loads assets
+
+    # --- Configure the C++ Game Logic ---
+    # Configs are available from the top-level import
+
+    logic.set_config(
+        cfg_w=cfg.width,
+        cfg_h=cfg.height, gcfg_pad_y1=game_cfg.pad_y1,
+        gcfg_terrain_y_val=game_cfg.terrain_y,
+        gcfg_max_v_x=game_cfg.max_vx, gcfg_max_v_y=game_cfg.max_vy,
+        pcfg_gravity=planet_cfg.g,
+        pcfg_fric_x=planet_cfg.mu_x, pcfg_fric_y=planet_cfg.mu_y,
+        lcfg_w=lander_cfg.width, lcfg_h=lander_cfg.height,
+        lcfg_fuel=lander_cfg.max_fuel,
+        gcfg_spad_width=game_cfg.spad_width,
+        gcfg_lpad_width=game_cfg.lpad_width,
+        gcfg_x0_vec=game_cfg.x0.tolist(),
+        gcfg_v0_vec=game_cfg.v0.tolist(),
+        gcfg_a0_vec=game_cfg.a0.tolist()
+    )
+
+    # --- Reset the C++ logic using the CURRENT pad positions ---
+    # This ensures the lander starts centered
+    # on the potentially randomized start pad
+    logic.reset(game_cfg.spad_x1, game_cfg.lpad_x1)
 
     # Initialize NN if in NN mode
     start_time = 0  # Initialize timer variable
@@ -178,8 +216,8 @@ def game_loop(mode: str):
             state, done = logic.update(action)
             if done:
                 game_over = True
-                render_info = logic.get_render_info()
-                if render_info["landed_successfully"]:
+                # Access public members directly
+                if logic.landed_successfully:
                     print("Landing Successful!")
                 else:
                     print("Crashed!")

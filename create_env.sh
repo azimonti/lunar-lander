@@ -2,8 +2,8 @@
 
 unameOut="$(uname -s)"
 case "${unameOut}" in
-	Linux*)		MACHINE="$(lsb_release -is)";;
-	Darwin*)	MACHINE=mac;;
+  Linux*)     MACHINE=linux;;
+	Darwin*)	MACHINE=macos;;
 	CYGWIN*)	MACHINE=cygwin;;
 	MINGW*)		MACHINE=mingw;;
 	*)		MACHINE="UNKNOWN:${unameOut}"
