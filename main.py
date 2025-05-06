@@ -6,8 +6,8 @@
 /******************/
 '''
 from mod_lander import LanderVisuals
-from mod_config import palette, cfg, game_cfg,  planet_cfg, lander_cfg, \
-    reset_pad_positions
+from mod_config import palette, nn_config, cfg, game_cfg,  planet_cfg, \
+    lander_cfg, reset_pad_positions
 from mod_nn_train import NeuralNetwork
 import pygame
 import argparse
@@ -25,15 +25,14 @@ else:
     build_path = os.path.join(build_dir, "Release")
 sys.path.append(os.path.realpath(build_path))
 try:
-    import cpp_game_logic
+    from cpp_game_logic import GameLogicCppDouble as GameLogicCpp
 except ModuleNotFoundError as e:
     print(f"Error: {e}")
 
 c = palette
 
 
-def draw_game(screen: pygame.Surface, logic: cpp_game_logic.GameLogicCpp,
-              visuals: LanderVisuals,
+def draw_game(screen: pygame.Surface, logic, visuals: LanderVisuals,
               sounds: SimpleNamespace, font: pygame.font.Font):
     """Renders the current game state."""
     lander_x = logic.x
@@ -119,7 +118,7 @@ def game_loop(mode: str):
 
     # Initialize Game Logic and Visuals
     # Use the C++ GameLogic implementation
-    logic = cpp_game_logic.GameLogicCpp(no_print_flag=False)
+    logic = GameLogicCpp(no_print_flag=False)
     visuals = LanderVisuals()  # Loads assets
 
     # --- Configure the C++ Game Logic ---

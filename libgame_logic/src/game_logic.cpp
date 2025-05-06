@@ -11,38 +11,40 @@
 #include <numeric>
 #include <stdexcept>
 #include <vector>
-#include "game_logic.h"
+#include "game_logic.h" // Template definitions are often included directly or via .tpp file
 
 // --- Constructor ---
-GameLogicCpp::GameLogicCpp(bool no_print_flag)
+template <typename T>
+GameLogicCpp<T>::GameLogicCpp(bool no_print_flag)
     : // Initialize state variables to reasonable defaults
-      x(0.0), y(0.0), vx(0.0), vy(0.0), fuel(0.0), landed(false), crashed(false), landed_successfully(false),
-      landing_pad_center_x(0.0), landing_pad_y(0.0), no_print(no_print_flag), last_action(0), // Default action is Noop
+      x(T(0.0)), y(T(0.0)), vx(T(0.0)), vy(T(0.0)), fuel(T(0.0)), landed(false), crashed(false), landed_successfully(false),
+      landing_pad_center_x(T(0.0)), landing_pad_y(T(0.0)), no_print(no_print_flag), last_action(0), // Default action is Noop
       // Internal state
-      ax(0.0), ay(0.0), time_step(0),
+      ax(T(0.0)), ay(T(0.0)), time_step(0),
       // Config defaults (will be overwritten by set_config)
-      initial_x(0.0), initial_y(0.0), initial_vx(0.0), initial_vy(0.0), initial_ax(0.0), initial_ay(0.0), pcfg_g(0.0),
-      lcfg_max_fuel(100.0),                       // Default value
-      lpad_x1(0.0), lpad_width(0.0), pad_y1(0.0), // Landing pad
-      spad_width(80.0),                           // Default starting pad width
-      max_safe_vx(1.0), max_safe_vy(1.0),         // Default safe values > 0
-      cfg_width(100.0), cfg_height(100.0),        // Default dimensions
-      lcfg_width(10.0), lcfg_height(10.0),        // Default lander dimensions
-      pcfg_mu_x(0.0), pcfg_mu_y(0.0), gcfg_terrain_y(0.0), ground_level(0.0)
+      initial_x(T(0.0)), initial_y(T(0.0)), initial_vx(T(0.0)), initial_vy(T(0.0)), initial_ax(T(0.0)), initial_ay(T(0.0)), pcfg_g(T(0.0)),
+      lcfg_max_fuel(T(100.0)),                       // Default value
+      lpad_x1(T(0.0)), lpad_width(T(0.0)), pad_y1(T(0.0)), // Landing pad
+      spad_width(T(80.0)),                           // Default starting pad width
+      max_safe_vx(T(1.0)), max_safe_vy(T(1.0)),         // Default safe values > 0
+      cfg_width(T(100.0)), cfg_height(T(100.0)),        // Default dimensions
+      lcfg_width(T(10.0)), lcfg_height(T(10.0)),        // Default lander dimensions
+      pcfg_mu_x(T(0.0)), pcfg_mu_y(T(0.0)), gcfg_terrain_y(T(0.0)), ground_level(T(0.0))
 {
     // reset(); // Reset is called after set_config typically
 }
 
 // --- Configuration Setting ---
-void GameLogicCpp::set_config(double cfg_w, double cfg_h, double gcfg_pad_y1, double gcfg_terrain_y_val,
-                              double gcfg_max_v_x, double gcfg_max_v_y, double pcfg_gravity, double pcfg_fric_x,
-                              double pcfg_fric_y, double lcfg_w, double lcfg_h, double lcfg_fuel,
-                              double gcfg_spad_width, double gcfg_lpad_width, const std::vector<double>& gcfg_x0_vec,
-                              const std::vector<double>& gcfg_v0_vec, const std::vector<double>& gcfg_a0_vec)
+template <typename T>
+void GameLogicCpp<T>::set_config(T cfg_w, T cfg_h, T gcfg_pad_y1, T gcfg_terrain_y_val,
+                              T gcfg_max_v_x, T gcfg_max_v_y, T pcfg_gravity, T pcfg_fric_x,
+                              T pcfg_fric_y, T lcfg_w, T lcfg_h, T lcfg_fuel,
+                              T gcfg_spad_width, T gcfg_lpad_width, const std::vector<T>& gcfg_x0_vec,
+                              const std::vector<T>& gcfg_v0_vec, const std::vector<T>& gcfg_a0_vec)
 {
     if (gcfg_x0_vec.size() != 2 || gcfg_v0_vec.size() != 2 || gcfg_a0_vec.size() != 2)
     {
-        throw std::runtime_error("GameLogicCpp::set_config: Initial state vectors must have size 2.");
+        throw std::runtime_error("GameLogicCpp<T>::set_config: Initial state vectors must have size 2.");
     }
 
     cfg_width      = cfg_w;
@@ -54,8 +56,8 @@ void GameLogicCpp::set_config(double cfg_w, double cfg_h, double gcfg_pad_y1, do
     max_safe_vx    = std::abs(gcfg_max_v_x);
     max_safe_vy    = std::abs(gcfg_max_v_y);
     // Prevent division by zero in get_state
-    if (max_safe_vx == 0.0) max_safe_vx = 1e-6;
-    if (max_safe_vy == 0.0) max_safe_vy = 1e-6;
+    if (max_safe_vx == T(0.0)) max_safe_vx = T(1e-6);
+    if (max_safe_vy == T(0.0)) max_safe_vy = T(1e-6);
 
     pcfg_g        = pcfg_gravity;
     pcfg_mu_x     = pcfg_fric_x;
@@ -79,7 +81,8 @@ void GameLogicCpp::set_config(double cfg_w, double cfg_h, double gcfg_pad_y1, do
     recalculate_derived_values(); // Calculate ground level etc.
 }
 
-void GameLogicCpp::update_pad_positions(double spad_x1, double lpad_x1_new)
+template <typename T>
+void GameLogicCpp<T>::update_pad_positions(T spad_x1, T lpad_x1_new)
 {
     // Assuming spad_x1 is not used based on Python logic, but keeping param
     // Assuming lpad_width is fixed and set during set_config or has a default
@@ -90,13 +93,14 @@ void GameLogicCpp::update_pad_positions(double spad_x1, double lpad_x1_new)
     recalculate_derived_values();
 }
 
-void GameLogicCpp::recalculate_derived_values()
+template <typename T>
+void GameLogicCpp<T>::recalculate_derived_values()
 {
     // Calculate landing pad center and y-coordinate
     // Ensure lpad_width is valid before calculation
-    if (cfg_width > 0 && cfg_height > 0)
+    if (cfg_width > T(0.0) && cfg_height > T(0.0))
     { // Basic check
-        landing_pad_center_x = lpad_x1 + lpad_width / 2.0;
+        landing_pad_center_x = lpad_x1 + lpad_width / T(2.0);
         landing_pad_y        = pad_y1; // Pad Y seems fixed relative to terrain/config
 
         // Calculate ground level based on current config
@@ -105,19 +109,20 @@ void GameLogicCpp::recalculate_derived_values()
     else
     {
         // Handle error or set defaults if config is invalid
-        landing_pad_center_x = 0.0;
-        landing_pad_y        = 0.0;
-        ground_level         = 0.0;
+        landing_pad_center_x = T(0.0);
+        landing_pad_y        = T(0.0);
+        ground_level         = T(0.0);
         if (!no_print)
         {
             std::cerr << "Warning: Invalid config dimensions in recalculate_derived_values." << std::endl;
         }
     }
     // Ensure max fuel is positive
-    if (lcfg_max_fuel <= 0) lcfg_max_fuel = 1e-6;
+    if (lcfg_max_fuel <= T(0.0)) lcfg_max_fuel = T(1e-6);
 }
 
-void GameLogicCpp::reset()
+template <typename T>
+void GameLogicCpp<T>::reset()
 {
     x                   = initial_x;
     y                   = initial_y;
@@ -134,7 +139,8 @@ void GameLogicCpp::reset()
 }
 
 // Overload reset to accept specific pad positions and calculate initial x
-void GameLogicCpp::reset(double spad_x1, double lpad_x1_new)
+template <typename T>
+void GameLogicCpp<T>::reset(T spad_x1, T lpad_x1_new)
 {
     update_pad_positions(spad_x1, lpad_x1_new); // Update landing pad info first
 
@@ -143,15 +149,16 @@ void GameLogicCpp::reset(double spad_x1, double lpad_x1_new)
 
     // Calculate the lander's starting x to be centered on the start pad
     // This mirrors the logic in Python's reset_pad_positions
-    x = spad_x1 + (spad_width / 2.0) - (lcfg_width / 2.0);
+    x = spad_x1 + (spad_width / T(2.0)) - (lcfg_width / T(2.0));
     // Keep the y position from the standard reset (initial_y)
 }
 
-void GameLogicCpp::apply_action(int action)
+template <typename T>
+void GameLogicCpp<T>::apply_action(int action)
 {
     last_action = action;
 
-    if (fuel <= 0.0)
+    if (fuel <= T(0.0))
     {
         return; // No thrust if out of fuel
     }
@@ -159,16 +166,16 @@ void GameLogicCpp::apply_action(int action)
     switch (action)
     {
     case 1:        // Thrust Up
-        vy -= 0.3; // Instantaneous change, adjust as needed (Matches Python)
-        fuel -= 1.0;
+        vy -= T(0.3); // Instantaneous change, adjust as needed (Matches Python)
+        fuel -= T(1.0);
         break;
     case 2: // Thrust Left
-        vx -= 0.05;
-        fuel -= 0.5;
+        vx -= T(0.05);
+        fuel -= T(0.5);
         break;
     case 3: // Thrust Right
-        vx += 0.05;
-        fuel -= 0.5;
+        vx += T(0.05);
+        fuel -= T(0.5);
         break;
     case 0: // Noop
     default:
@@ -177,18 +184,19 @@ void GameLogicCpp::apply_action(int action)
     }
 
     // Clamp fuel to zero
-    fuel = std::max(0.0, fuel);
+    fuel = std::max(T(0.0), fuel);
 }
 
-void GameLogicCpp::update_physics()
+template <typename T>
+void GameLogicCpp<T>::update_physics()
 {
     // Update velocity with acceleration (gravity is already in ay)
     // vx += ax; // No horizontal acceleration
     vy += ay;
 
     // Apply friction/air resistance
-    vx *= (1.0 - pcfg_mu_x);
-    vy *= (1.0 - pcfg_mu_y);
+    vx *= (T(1.0) - pcfg_mu_x);
+    vy *= (T(1.0) - pcfg_mu_y);
 
     // Update position
     x += vx;
@@ -197,7 +205,8 @@ void GameLogicCpp::update_physics()
     // Ground collision is handled in check_landing_crash
 }
 
-void GameLogicCpp::check_landing_crash()
+template <typename T>
+void GameLogicCpp<T>::check_landing_crash()
 {
     // Only check for landing/crash after the first time step
     if (time_step == 0) { return; }
@@ -217,16 +226,16 @@ void GameLogicCpp::check_landing_crash()
         if (on_landing_pad && safe_speed)
         {
             landed_successfully = true;
-            vx                  = 0.0; // Stop movement on successful landing
-            vy                  = 0.0;
+            vx                  = T(0.0); // Stop movement on successful landing
+            vy                  = T(0.0);
             if (!no_print) { std::cout << "GameLogicCpp: Successful landing!" << std::endl; }
         }
         else
         {
             crashed             = true;
             landed_successfully = false;
-            vx                  = 0.0; // Stop movement on crash
-            vy                  = 0.0;
+            vx                  = T(0.0); // Stop movement on crash
+            vy                  = T(0.0);
             if (!no_print)
             {
                 if (!on_landing_pad) { std::cout << "GameLogicCpp: Crashed - outside landing area!" << std::endl; }
@@ -245,7 +254,8 @@ void GameLogicCpp::check_landing_crash()
     }
 }
 
-std::pair<std::vector<double>, bool> GameLogicCpp::update(int action)
+template <typename T>
+std::pair<std::vector<T>, bool> GameLogicCpp<T>::update(int action)
 {
     if (is_done())
     {
@@ -260,28 +270,30 @@ std::pair<std::vector<double>, bool> GameLogicCpp::update(int action)
     time_step++;
 
     bool done                 = is_done();
-    std::vector<double> state = get_state();
+    std::vector<T> state = get_state();
 
     return {state, done};
 }
 
-bool GameLogicCpp::is_done() const
+template <typename T>
+bool GameLogicCpp<T>::is_done() const
 {
     // Episode ends if landed or crashed
     return landed || crashed;
 }
 
-std::vector<double> GameLogicCpp::get_state() const
+template <typename T>
+std::vector<T> GameLogicCpp<T>::get_state() const
 {
     // Calculate distance to target landing pad center
-    double dist_target_x      = x - landing_pad_center_x;
+    T dist_target_x      = x - landing_pad_center_x;
     // Target Y is the top of the pad (landing_pad_y)
     // Distance is current Y relative to pad Y. Positive means above.
-    double dist_target_y      = y - landing_pad_y;
+    T dist_target_y      = y - landing_pad_y;
 
     // Normalize the state for the NN
     // Ensure denominators are not zero (handled in set_config/recalculate)
-    std::vector<double> state = {
+    std::vector<T> state = {
         vx / max_safe_vx,           // Normalized Vx
         vy / max_safe_vy,           // Normalized Vy
         dist_target_x / cfg_width,  // Normalized distance X
@@ -290,25 +302,26 @@ std::vector<double> GameLogicCpp::get_state() const
     };
 
     // Apply clipping similar to Python
-    state[0] = std::clamp(state[0], -2.0, 2.0); // vx_norm
-    state[1] = std::clamp(state[1], -2.0, 2.0); // vy_norm
-    state[2] = std::clamp(state[2], -5.0, 5.0); // dist_x_norm
-    state[3] = std::clamp(state[3], -5.0, 5.0); // dist_y_norm
+    state[0] = std::clamp(state[0], T(-2.0), T(2.0)); // vx_norm
+    state[1] = std::clamp(state[1], T(-2.0), T(2.0)); // vy_norm
+    state[2] = std::clamp(state[2], T(-5.0), T(5.0)); // dist_x_norm
+    state[3] = std::clamp(state[3], T(-5.0), T(5.0)); // dist_y_norm
     // Fuel is already clamped between 0 and 1 implicitly by normalization
 
     return state;
 }
 
 // New get_state overload: Writes directly to the provided buffer
-void GameLogicCpp::get_state(double* pOutputs, size_t outputsSize) const
+template <typename T>
+void GameLogicCpp<T>::get_state(T* pOutputs, size_t outputsSize) const
 {
 
-    assert(outputsSize >= 5 && "GameLogicCpp::get_state: Output buffer size must be at least 5.");
+    assert(outputsSize >= 5 && "GameLogicCpp<T>::get_state: Output buffer size must be at least 5.");
     (void)outputsSize;
 
     // Calculate distance to target landing pad center
-    double dist_target_x = x - landing_pad_center_x;
-    double dist_target_y = y - landing_pad_y;
+    T dist_target_x = x - landing_pad_center_x;
+    T dist_target_y = y - landing_pad_y;
 
     // Calculate normalized values directly into the output buffer
     // Ensure denominators are not zero (handled in set_config/recalculate)
@@ -319,14 +332,15 @@ void GameLogicCpp::get_state(double* pOutputs, size_t outputsSize) const
     pOutputs[4]          = fuel / lcfg_max_fuel;       // Normalized Fuel
 
     // Apply clipping directly to the buffer elements
-    pOutputs[0]          = std::clamp(pOutputs[0], -2.0, 2.0); // vx_norm
-    pOutputs[1]          = std::clamp(pOutputs[1], -2.0, 2.0); // vy_norm
-    pOutputs[2]          = std::clamp(pOutputs[2], -5.0, 5.0); // dist_x_norm
-    pOutputs[3]          = std::clamp(pOutputs[3], -5.0, 5.0); // dist_y_norm
+    pOutputs[0]          = std::clamp(pOutputs[0], T(-2.0), T(2.0)); // vx_norm
+    pOutputs[1]          = std::clamp(pOutputs[1], T(-2.0), T(2.0)); // vy_norm
+    pOutputs[2]          = std::clamp(pOutputs[2], T(-5.0), T(5.0)); // dist_x_norm
+    pOutputs[3]          = std::clamp(pOutputs[3], T(-5.0), T(5.0)); // dist_y_norm
 }
 
 // New update overload: Writes state to buffer, returns done flag
-bool GameLogicCpp::update(int action, double* pStateOutput, size_t stateOutputSize)
+template <typename T>
+bool GameLogicCpp<T>::update(int action, T* pStateOutput, size_t stateOutputSize)
 {
     if (is_done())
     {
@@ -350,61 +364,67 @@ bool GameLogicCpp::update(int action, double* pStateOutput, size_t stateOutputSi
 
 // --- Penalty Calculation Methods ---
 
-double GameLogicCpp::calculate_step_penalty(int action) const
+template <typename T>
+T GameLogicCpp<T>::calculate_step_penalty(int action) const
 {
-    double step_penalty = 0.0;
+    T step_penalty = T(0.0);
 
     // Penalty for distance from pad center
-    double dist_x       = std::abs(x - landing_pad_center_x);
-    double dist_y       = std::abs(y - landing_pad_y);
-    step_penalty += (dist_x + dist_y) * 0.001;
+    T dist_x       = std::abs(x - landing_pad_center_x);
+    T dist_y       = std::abs(y - landing_pad_y);
+    step_penalty += (dist_x + dist_y) * T(0.001);
 
     // Penalty for using fuel (if action > 0)
     if (action > 0)
     {
-        step_penalty += 0.01; // Small penalty per thrust action
+        step_penalty += T(0.01); // Small penalty per thrust action
     }
 
     return step_penalty;
 }
 
-double GameLogicCpp::calculate_terminal_penalty(int steps_taken) const
+template <typename T>
+T GameLogicCpp<T>::calculate_terminal_penalty(int steps_taken) const
 {
-    double terminal_penalty = 0.0;
+    T terminal_penalty = T(0.0);
 
     // Base penalty for steps taken (encourages efficiency)
-    terminal_penalty += static_cast<double>(steps_taken) * 0.1;
+    terminal_penalty += static_cast<T>(steps_taken) * T(0.1);
 
     // Distance penalty (applied more heavily at the end)
-    double dist_x = std::abs(x - landing_pad_center_x);
-    double dist_y = std::abs(y - landing_pad_y);
+    T dist_x = std::abs(x - landing_pad_center_x);
+    T dist_y = std::abs(y - landing_pad_y);
     // Scale distance penalty - higher if further away
-    terminal_penalty += (dist_x + dist_y) * 0.5;
+    terminal_penalty += (dist_x + dist_y) * T(0.5);
 
     if (landed_successfully)
     {
-        terminal_penalty -= 1000.0; // Big reward (negative penalty)
+        terminal_penalty -= T(1000.0); // Big reward (negative penalty)
         // Bonus for remaining fuel
-        terminal_penalty -= fuel * 2.0;
+        terminal_penalty -= fuel * T(2.0);
     }
     else if (crashed)
     {
-        terminal_penalty += 500.0; // Penalty for crashing
+        terminal_penalty += T(500.0); // Penalty for crashing
         // Increase penalty based on final velocity magnitude
-        double final_v_mag = std::sqrt(vx * vx + vy * vy);
-        terminal_penalty += final_v_mag * 10.0;
+        T final_v_mag = std::sqrt(vx * vx + vy * vy);
+        terminal_penalty += final_v_mag * T(10.0);
     }
-    else if (fuel <= 0.0 && !landed)
+    else if (fuel <= T(0.0) && !landed)
     {                              // Check if fuel is exactly 0 or less
-        terminal_penalty += 250.0; // Penalty for running out of fuel in air
+        terminal_penalty += T(250.0); // Penalty for running out of fuel in air
     }
 
     // Add small penalty based on final velocity if not landed successfully
     if (!landed_successfully)
     {
-        double final_v_mag = std::sqrt(vx * vx + vy * vy);
-        terminal_penalty += final_v_mag * 1.0;
+        T final_v_mag = std::sqrt(vx * vx + vy * vy);
+        terminal_penalty += final_v_mag * T(1.0);
     }
 
     return terminal_penalty;
 }
+
+// Explicit template instantiation
+template class GameLogicCpp<float>;
+template class GameLogicCpp<double>;
