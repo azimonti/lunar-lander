@@ -127,59 +127,6 @@ class NeuralNetwork():
         except Exception as e:
             print(f"Error during network serialization to {full_path}: {e}")
 
-    def _calculate_step_penalty(self, game_sim: cpp_game_logic.GameLogicCpp,
-                                action: int) -> float:
-        """Calculates the penalty applied at each step. Lower score is better.
-        """
-        step_penalty = 0.0
-
-        # Penalty for distance from pad center
-        dist_x = abs(game_sim.x - game_sim.landing_pad_center_x)
-        dist_y = abs(game_sim.y - game_sim.landing_pad_y)
-        step_penalty += (dist_x + dist_y) * 0.001
-
-        # Optional: Penalty for using fuel (if action > 0)
-        if action > 0:
-            step_penalty += 0.01  # Small penalty per thrust action
-
-        return step_penalty
-
-    def _calculate_terminal_penalty(self,
-                                    game_sim: cpp_game_logic.GameLogicCpp,
-                                    steps_taken: int) -> float:
-        """Calculates the terminal penalty/reward based on the final state.
-           Lower score (penalty) is better.
-        """
-        terminal_penalty = 0.0
-
-        # Base penalty for steps taken (encourages efficiency)
-        terminal_penalty += steps_taken * 0.1
-
-        # Distance penalty (applied more heavily at the end)
-        dist_x = abs(game_sim.x - game_sim.landing_pad_center_x)
-        dist_y = abs(game_sim.y - game_sim.landing_pad_y)
-        # Scale distance penalty - higher if further away
-        terminal_penalty += (dist_x + dist_y) * 0.5
-
-        if game_sim.landed_successfully:
-            terminal_penalty -= 1000.0  # Big reward (negative penalty)
-            # Bonus for remaining fuel
-            terminal_penalty -= game_sim.fuel * 2.0
-        elif game_sim.crashed:
-            terminal_penalty += 500.0  # Penalty for crashing
-            # Increase penalty based on final velocity magnitude
-            final_v_mag = np.sqrt(game_sim.vx**2 + game_sim.vy**2)
-            terminal_penalty += final_v_mag * 10.0
-        elif game_sim.fuel <= 0 and not game_sim.landed:
-            terminal_penalty += 250.0  # Penalty for running out of fuel in air
-
-        # Add small penalty based on final velocity if not landed successfully
-        if not game_sim.landed_successfully:
-            final_v_mag = np.sqrt(game_sim.vx**2 + game_sim.vy**2)
-            terminal_penalty += final_v_mag * 1.0
-
-        return terminal_penalty
-
     def _format_time(self, seconds):
         """Formats seconds into mm:ss string."""
         if seconds < 0:
@@ -362,34 +309,33 @@ class NeuralNetwork():
                     # --- Reset the C++ logic using the CURRENT pad pos  ---
                     # Ensures the instance uses the specific layout for the run
                     game_sim.reset(game_cfg.spad_x1, game_cfg.lpad_x1)
-
+                    # Determine dtype based on config
+                    dtype = np.float32 if nn_config.use_float else np.float64
                     # Pre-allocate state buffer
-                    state_buffer = np.zeros(5, dtype=np.float64)
-                    game_sim.get_state(state_buffer) # Get initial state into buffer
+                    state_buffer = np.zeros(5, dtype=dtype)
+                    # Get initial state into buffer
+                    game_sim.get_state(state_buffer)
                     done = False
                     accumulated_step_penalty = 0.0
                     steps = 0
 
-                    # Determine dtype based on config
-                    dtype = np.float32 if nn_config.use_float else np.float64
-
                     while not done and steps < game_cfg.max_steps:
-                        inputs = np.array(state_buffer, dtype=dtype) # Use buffer
                         # Get action index directly from NN
-                        action = self._net.feedforwardIndex(inputs, member_id)
-                        # Update game state - writes state into buffer, returns done
+                        action = self._net.feedforwardIndex(state_buffer,
+                                                            member_id)
+                        # Update game state - writes state into buffer,
+                        # returns done
                         done = game_sim.update(action, state_buffer)
-                        # Calculate step penalty
+                        # Calculate step penalty using C++ method
                         accumulated_step_penalty += \
-                            self._calculate_step_penalty(game_sim, action)
-                        # state = next_state # No longer needed, buffer updated in-place
+                            game_sim.calculate_step_penalty(action)
                         steps += 1
                         if done:
                             break
 
-                    # Calculate terminal penalty for this layout run
-                    terminal_penalty = self._calculate_terminal_penalty(
-                        game_sim, steps)
+                    # Calculate terminal penalty using C++ method
+                    terminal_penalty = game_sim.calculate_terminal_penalty(
+                        steps)
                     # Final fitness
                     fitness_for_layout = accumulated_step_penalty + \
                         terminal_penalty
@@ -481,31 +427,31 @@ class NeuralNetwork():
                 # Ensures the instance uses the potentially randomized pads
                 game_sim.reset(game_cfg.spad_x1, game_cfg.lpad_x1)
 
+                # Determine dtype based on config
+                dtype = np.float32 if nn_config.use_float else np.float64
                 # Pre-allocate state buffer
-                state_buffer = np.zeros(5, dtype=np.float64)
-                game_sim.get_state(state_buffer) # Get initial state into buffer
+                state_buffer = np.zeros(5, dtype=dtype)
+                # Get initial state into buffer
+                game_sim.get_state(state_buffer)
                 done = False
                 accumulated_step_penalty = 0.0
                 steps = 0
-                # Determine dtype based on config
-                dtype = np.float32 if nn_config.use_float else np.float64
 
                 while not done and steps < game_cfg.max_steps:
-                    inputs = np.array(state_buffer, dtype=dtype) # Use buffer
                     # Get action index directly from NN
-                    action = self._net.feedforwardIndex(inputs, member_id)
-                    # Update game state - writes state into buffer, returns done
+                    action = self._net.feedforwardIndex(
+                        state_buffer, member_id)
+                    # Update game state - writes state into buffer,
+                    # returns done
                     done = game_sim.update(action, state_buffer)
-                    # Calculate step penalty
+                    # Calculate step penalty using C++ method
                     accumulated_step_penalty += \
-                        self._calculate_step_penalty(game_sim, action)
-                    # state = next_state # No longer needed, buffer updated in-place
+                        game_sim.calculate_step_penalty(action)
                     steps += 1
                     if done:
                         break
-                # Calculate terminal penalty based on final state
-                terminal_penalty = self._calculate_terminal_penalty(game_sim,
-                                                                    steps)
+                # Calculate terminal penalty using C++ method
+                terminal_penalty = game_sim.calculate_terminal_penalty(steps)
                 # Final fitness
                 fitness_scores[member_id] = accumulated_step_penalty + \
                     terminal_penalty

@@ -76,5 +76,11 @@ PYBIND11_MODULE(cpp_game_logic, m)
         return self.update(action, ptr, size);
     }, py::arg("action"), py::arg("state_output"), // Action and the NumPy array to write state into
              "Performs one time step, fills the provided NumPy array with the new state, and returns the done flag "
-             "(bool).");
+             "(bool).")
+
+        // --- Bind Penalty Calculation Methods ---
+        .def("calculate_step_penalty", &GameLogicCpp::calculate_step_penalty, py::arg("action"),
+             "Calculates the penalty applied at each step based on state and action.")
+        .def("calculate_terminal_penalty", &GameLogicCpp::calculate_terminal_penalty, py::arg("steps_taken"),
+             "Calculates the terminal penalty/reward based on the final state and steps taken.");
 }

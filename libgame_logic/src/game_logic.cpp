@@ -347,3 +347,64 @@ bool GameLogicCpp::update(int action, double* pStateOutput, size_t stateOutputSi
 
     return done; // Return only the done flag
 }
+
+// --- Penalty Calculation Methods ---
+
+double GameLogicCpp::calculate_step_penalty(int action) const
+{
+    double step_penalty = 0.0;
+
+    // Penalty for distance from pad center
+    double dist_x       = std::abs(x - landing_pad_center_x);
+    double dist_y       = std::abs(y - landing_pad_y);
+    step_penalty += (dist_x + dist_y) * 0.001;
+
+    // Penalty for using fuel (if action > 0)
+    if (action > 0)
+    {
+        step_penalty += 0.01; // Small penalty per thrust action
+    }
+
+    return step_penalty;
+}
+
+double GameLogicCpp::calculate_terminal_penalty(int steps_taken) const
+{
+    double terminal_penalty = 0.0;
+
+    // Base penalty for steps taken (encourages efficiency)
+    terminal_penalty += static_cast<double>(steps_taken) * 0.1;
+
+    // Distance penalty (applied more heavily at the end)
+    double dist_x = std::abs(x - landing_pad_center_x);
+    double dist_y = std::abs(y - landing_pad_y);
+    // Scale distance penalty - higher if further away
+    terminal_penalty += (dist_x + dist_y) * 0.5;
+
+    if (landed_successfully)
+    {
+        terminal_penalty -= 1000.0; // Big reward (negative penalty)
+        // Bonus for remaining fuel
+        terminal_penalty -= fuel * 2.0;
+    }
+    else if (crashed)
+    {
+        terminal_penalty += 500.0; // Penalty for crashing
+        // Increase penalty based on final velocity magnitude
+        double final_v_mag = std::sqrt(vx * vx + vy * vy);
+        terminal_penalty += final_v_mag * 10.0;
+    }
+    else if (fuel <= 0.0 && !landed)
+    {                              // Check if fuel is exactly 0 or less
+        terminal_penalty += 250.0; // Penalty for running out of fuel in air
+    }
+
+    // Add small penalty based on final velocity if not landed successfully
+    if (!landed_successfully)
+    {
+        double final_v_mag = std::sqrt(vx * vx + vy * vy);
+        terminal_penalty += final_v_mag * 1.0;
+    }
+
+    return terminal_penalty;
+}

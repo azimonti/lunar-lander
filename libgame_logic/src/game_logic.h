@@ -10,10 +10,6 @@
 #include <cmath>
 #include <vector>
 
-// Forward declaration if config struct/class is used directly
-// Or include config header if available and suitable
-// For now, assume config values are passed during init or reset
-
 class GameLogicCpp
 {
   public:
@@ -78,6 +74,10 @@ class GameLogicCpp
 
     // Method to update pad positions dynamically (used in training)
     void update_pad_positions(double spad_x1, double lpad_x1_new);
+
+    // --- Penalty Calculation Methods ---
+    double calculate_step_penalty(int action) const;
+    double calculate_terminal_penalty(int steps_taken) const;
 
   private:
     // Helper to recalculate derived values after config/pad changes
