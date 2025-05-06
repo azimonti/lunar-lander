@@ -36,7 +36,6 @@ class NeuralNetwork():
         self._nnsize = None
         self._game_env = None
         self._start_time = time.time()
-        pass
 
     def init(self):
         if nn_config.save_nn:
@@ -77,8 +76,7 @@ class NeuralNetwork():
         # Get current epoch/generation from loaded net
         self._nGen = self._net.GetEpochs()
         self._start_time = time.time()  # Reset start time on load
-        # GameLogic expects 5 inputs and 4 outputs (Corrected comment)
-        self._nnsize = [5] + nn_config.hlayers + [4]
+        self._nnsize = self._net.GetNetworkSize()
         if nn_config.verbose:
             print(f"Loading network from: {full_path} "
                   f"(Generation {self._nGen})")
@@ -196,9 +194,9 @@ class NeuralNetwork():
             return
 
         print(f"Starting training for {nn_config.epochs} generations...")
-        print(f"Population size: {nn_config.population_size}, "
-              f"Top performers: {nn_config.top_individuals}")
-        print(f"Network structure: {self._nnsize}")
+        print(f"Population size: {self._net.GetPopSize()}, "
+              f"Top performers: {self._net.GetTopPerformersSize()}")
+        print(f"Network structure: {self._net.GetNetworkSize()}")
         if nn_config.multiple_layout:
             self.train_multiple_layout()
         else:
