@@ -20,22 +20,24 @@ https://github.com/user-attachments/assets/a9feb50e-0872-41a3-84ee-86dfc4e0c948
 
 ## Getting Started
 
-To get started with the control feedback:
+To get started with the lunar lander:
 
 1. Clone the repository:
    ```
    git clone https://github.com/azimonti/lunar-lander
    ```
+
 2. Navigate to the repository directory:
    ```
    cd lunar-lander
    ```
+
 3. Initialize and update the submodules:
   ```
   git submodule update --init --recursive
   ```
 
-Further update of the submodule can be done with the command:
+  Further update of the submodule can be done with the command:
   ```
   git submodule update --remote
   ```

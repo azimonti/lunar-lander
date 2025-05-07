@@ -37,4 +37,12 @@ echo "  FPS   : ${FPS}"
 
 ffmpeg -framerate "${FPS}" -i "${INPUT_PATTERN}" -vf "pad=ceil(iw/2)*2:ceil(ih/2)*2" -c:v libx264 -pix_fmt yuv420p -y "${OUTPUT_VIDEO}"
 
+# Write 4K
+# ffmpeg -framerate "${FPS}" -i "${INPUT_PATTERN}" -vf "scale=3840:2160" -c:v libx264 -pix_fmt yuv420p -b:v 25M -y "${OUTPUT_VIDEO}"
+
 echo "Video creation complete."
+
+# concat multiple videos
+# cd data/img
+# ffmpeg -f concat -safe 0 -i <(for F in *_video.mp4; do echo "file '$PWD/$F'"; done) -c copy _video_concat.mp4
+# cd ../..

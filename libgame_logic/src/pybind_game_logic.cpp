@@ -7,13 +7,12 @@
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h> // For vector binding
-#include "game_logic.h"  // Include the templated class definition
+#include "game_logic.h"   // Include the templated class definition
 
 namespace py = pybind11;
 
 // Helper function to bind the templated class
-template <typename T>
-void bind_game_logic_class(py::module& m, const std::string& class_name)
+template <typename T> void bind_game_logic_class(py::module& m, const std::string& class_name)
 {
     using Class = GameLogicCpp<T>; // Alias for the specific instantiation
 
@@ -55,33 +54,26 @@ void bind_game_logic_class(py::module& m, const std::string& class_name)
         // Takes a NumPy array (output buffer) as input, returns void
         .def("get_state",
              [](const Class& self, py::array_t<T> state_output) {
-                 py::buffer_info buf_info = state_output.request();
-                 if (buf_info.ndim != 1)
-                 {
-                     throw std::runtime_error("get_state: Output array must be 1-dimensional.");
-                 }
-                 T* ptr    = static_cast<T*>(buf_info.ptr);
-                 size_t size = static_cast<size_t>(buf_info.shape[0]);
-                 // Call the C++ function that writes directly to the buffer
-                 self.get_state(ptr, size);
-             },
+        py::buffer_info buf_info = state_output.request();
+        if (buf_info.ndim != 1) { throw std::runtime_error("get_state: Output array must be 1-dimensional."); }
+        T* ptr      = static_cast<T*>(buf_info.ptr);
+        size_t size = static_cast<size_t>(buf_info.shape[0]);
+        // Call the C++ function that writes directly to the buffer
+        self.get_state(ptr, size);
+    },
              py::arg("state_output"), // The NumPy array to write into
              "Fills the provided NumPy array with the current state vector.")
 
         // Takes action and a NumPy array (output buffer), returns bool (done flag)
         .def("update",
              [](Class& self, int action, py::array_t<T> state_output) -> bool {
-                 py::buffer_info buf_info = state_output.request();
-                 if (buf_info.ndim != 1)
-                 {
-                     throw std::runtime_error("update: Output state array must be 1-dimensional.");
-                 }
-                 T* ptr    = static_cast<T*>(buf_info.ptr);
-                 size_t size = static_cast<size_t>(buf_info.shape[0]);
-                 // Call the C++ function that writes state to buffer and returns done flag
-                 return self.update(action, ptr, size);
-             },
-             py::arg("action"), py::arg("state_output"), // Action and the NumPy array to write state into
+        py::buffer_info buf_info = state_output.request();
+        if (buf_info.ndim != 1) { throw std::runtime_error("update: Output state array must be 1-dimensional."); }
+        T* ptr      = static_cast<T*>(buf_info.ptr);
+        size_t size = static_cast<size_t>(buf_info.shape[0]);
+        // Call the C++ function that writes state to buffer and returns done flag
+        return self.update(action, ptr, size);
+    }, py::arg("action"), py::arg("state_output"), // Action and the NumPy array to write state into
              "Performs one time step, fills the provided NumPy array with the new state, and returns the done flag "
              "(bool).")
 

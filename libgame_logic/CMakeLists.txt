@@ -1,11 +1,9 @@
 cmake_minimum_required(VERSION 3.13.4)
 project(libgame_logic CXX)
 
-
 set (PROJECT_VERSION "1.0"    )
 project(${PROJECT_NAME} VERSION ${PROJECT_VERSION})
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/../externals/ma-libs/cmake_modules")
-message(  "${CMAKE_SOURCE_DIR}/../external/ma-libs/cmake_modules")
 include( COMPILERCOMMON     )
 include( COMPILERCPP        )
 include( FindLIBS           )
@@ -51,13 +49,7 @@ add_library(game_logic_cpp STATIC
     src/game_logic.h
 )
 target_include_directories(game_logic_cpp PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_compile_features(game_logic_cpp PUBLIC cxx_std_11) # Or cxx_std_14, cxx_std_17 if needed
-
-# --- Build the Python module using pybind11 ---
-# Find Python and pybind11 (assuming FindPython and Findpybind11 are available or handled globally)
-# If not handled globally, add find_package commands here:
-# find_package(Python COMPONENTS Interpreter Development REQUIRED)
-# find_package(pybind11 REQUIRED)
+target_compile_features(game_logic_cpp PUBLIC cxx_std_17)
 
 # Add the pybind11 module
 # The module name 'cpp_game_logic' must match PYBIND11_MODULE macro in pybind_game_logic.cpp
@@ -68,15 +60,4 @@ pybind11_add_module(cpp_game_logic SHARED
 # Link the Python module against the static library
 target_link_libraries(cpp_game_logic PRIVATE game_logic_cpp)
 
-# Ensure NumPy headers are included (pybind11 usually handles this if found correctly)
-# If needed explicitly:
-# find_package(NumPy REQUIRED)
-# target_include_directories(cpp_game_logic PRIVATE ${NumPy_INCLUDE_DIRS})
-
-# Define installation rules (optional, but good practice)
-# This installs the .so/.pyd file to the Python site-packages directory
-# Adjust path as needed based on project structure/virtual env
-# install(TARGETS cpp_game_logic DESTINATION ${CMAKE_INSTALL_PREFIX}/python)
-
-# Add a message for clarity
 message(STATUS "Configuring libgame_logic C++ library and Python bindings.")

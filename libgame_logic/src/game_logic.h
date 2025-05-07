@@ -8,12 +8,11 @@
 /******************/
 
 #include <cmath>
-#include <vector>
 #include <cstddef> // For size_t
 #include <utility> // For std::pair
+#include <vector>
 
-template <typename T>
-class GameLogicCpp
+template <typename T> class GameLogicCpp
 {
   public:
     T x, y, vx, vy, fuel;
@@ -67,9 +66,8 @@ class GameLogicCpp
     void get_state(T* pOutputs, size_t outputsSize) const;
 
     // Method to explicitly set config values if not passed in constructor
-    void set_config(T cfg_w, T cfg_h, T gcfg_pad_y1, T gcfg_terrain_y_val, T gcfg_max_v_x,
-                    T gcfg_max_v_y, T pcfg_gravity, T pcfg_fric_x, T pcfg_fric_y, T lcfg_w,
-                    T lcfg_h, T lcfg_fuel,
+    void set_config(T cfg_w, T cfg_h, T gcfg_pad_y1, T gcfg_terrain_y_val, T gcfg_max_v_x, T gcfg_max_v_y,
+                    T pcfg_gravity, T pcfg_fric_x, T pcfg_fric_y, T lcfg_w, T lcfg_h, T lcfg_fuel,
                     T gcfg_spad_width, // Starting pad width
                     T gcfg_lpad_width, // Landing pad width
                     const std::vector<T>& gcfg_x0_vec, const std::vector<T>& gcfg_v0_vec,
