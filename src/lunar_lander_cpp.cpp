@@ -1,13 +1,15 @@
-/*************************/
-/* pybind_game_logic.cpp */
-/*     Version 1.0       */
-/*      2023/05/05       */
-/*************************/
+/************************/
+/* lunar_lander_cpp.cpp */
+/*     Version 1.0      */
+/*      2023/05/05      */
+/************************/
 
 #include <pybind11/numpy.h>
+#include <pybind11/operators.h> // For optional
 #include <pybind11/pybind11.h>
-#include <pybind11/stl.h> // For vector binding
-#include "game_logic.h"   // Include the templated class definition
+#include <pybind11/stl.h>
+#include "game_logic.h"
+#include "game_utils.h" // Added for pad generation
 
 namespace py = pybind11;
 
@@ -39,9 +41,6 @@ template <typename T> void bind_game_logic_class(py::module& m, const std::strin
              py::arg("pcfg_fric_x"), py::arg("pcfg_fric_y"), py::arg("lcfg_w"), py::arg("lcfg_h"), py::arg("lcfg_fuel"),
              py::arg("gcfg_spad_width"), py::arg("gcfg_lpad_width"), py::arg("gcfg_x0_vec"), py::arg("gcfg_v0_vec"),
              py::arg("gcfg_a0_vec"), "Sets the configuration parameters for the game simulation.")
-
-        .def("update_pad_positions", &Class::update_pad_positions, py::arg("spad_x1"), py::arg("lpad_x1_new"),
-             "Updates the landing pad position dynamically.")
 
         // Bind reset methods using static_cast to resolve overloads
         .def("reset", static_cast<void (Class::*)()>(&Class::reset),
@@ -84,13 +83,20 @@ template <typename T> void bind_game_logic_class(py::module& m, const std::strin
              "Calculates the terminal penalty/reward based on the final state and steps taken.");
 }
 
-PYBIND11_MODULE(cpp_game_logic, m)
+PYBIND11_MODULE(lunar_lander_cpp, m)
 {
-    m.doc() = "pybind11 plugin for C++ Lunar Lander Game Logic (float and double versions)";
+    m.doc() = "pybind11 plugin for C++ Lunar Lander";
 
     // Bind the float version
     bind_game_logic_class<float>(m, "GameLogicCppFloat");
 
     // Bind the double version
     bind_game_logic_class<double>(m, "GameLogicCppDouble");
+
+    // Bind the utility function
+    m.def("generate_random_pad_positions", &generate_random_pad_positions, py::arg("screen_width"),
+          py::arg("spad_width"), py::arg("lpad_width"),
+          py::arg("seed")                = py::none(), // py::none() maps to std::nullopt for std::optional<int>
+          py::arg("force_left_to_right") = false, py::arg("force_right_to_left") = false,
+          "Generates random, non-overlapping positions for start and landing pads.");
 }

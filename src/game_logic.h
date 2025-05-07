@@ -8,8 +8,8 @@
 /******************/
 
 #include <cmath>
-#include <cstddef> // For size_t
-#include <utility> // For std::pair
+#include <cstddef>
+#include <utility>
 #include <vector>
 
 template <typename T> class GameLogicCpp
@@ -53,7 +53,7 @@ template <typename T> class GameLogicCpp
     // --- Public Methods ---
     void reset(); // Consider passing config struct here if dynamic
     // Overload reset to accept specific pad positions if needed for training
-    void reset(T spad_x1, T lpad_x1_new);
+    void reset(T spad_x1_new, T lpad_x1_new);
 
     // The main update function (Returning vector might be less efficient for templates, consider pointer version)
     std::pair<std::vector<T>, bool> update(int action);
@@ -72,9 +72,6 @@ template <typename T> class GameLogicCpp
                     T gcfg_lpad_width, // Landing pad width
                     const std::vector<T>& gcfg_x0_vec, const std::vector<T>& gcfg_v0_vec,
                     const std::vector<T>& gcfg_a0_vec);
-
-    // Method to update pad positions dynamically (used in training)
-    void update_pad_positions(T spad_x1, T lpad_x1_new);
 
     // --- Penalty Calculation Methods ---
     T calculate_step_penalty(int action) const;

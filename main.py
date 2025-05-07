@@ -6,16 +6,15 @@
 /******************/
 '''
 from mod_lander import LanderVisuals
-from mod_config import palette, nn_config, cfg, game_cfg,  planet_cfg, \
-    lander_cfg, reset_pad_positions
+from mod_config import palette, cfg, game_cfg,  planet_cfg, lander_cfg
 from mod_nn_train import NeuralNetwork
 import pygame
 import argparse
 import glob
-import sys
+import numpy as np
 import os
+import sys
 from types import SimpleNamespace
-import numpy as np # Import numpy
 
 cwd = os.getcwd()
 build_dir = os.path.join(cwd, "./externals/ma-libs/build")
@@ -25,11 +24,33 @@ else:
     build_path = os.path.join(build_dir, "Release")
 sys.path.append(os.path.realpath(build_path))
 try:
-    from cpp_game_logic import GameLogicCppDouble as GameLogicCpp
+    from lunar_lander_cpp import GameLogicCppDouble as GameLogicCpp, \
+            generate_random_pad_positions
 except ModuleNotFoundError as e:
     print(f"Error: {e}")
 
 c = palette
+
+
+def reset_pad_positions(seed=None, force_left_to_right=False,
+                        force_right_to_left=False):
+    """Resets the pad positions if random_position is True.
+    Uses provided seed or generates one."""
+    game_cfg.spad_x1, game_cfg.lpad_x1 = generate_random_pad_positions(
+        cfg.width, game_cfg.spad_width, game_cfg.lpad_width,
+        seed=game_cfg.current_seed,
+        force_left_to_right=force_left_to_right,
+        force_right_to_left=force_right_to_left
+    )
+    # Update lander initial x position to be centered on the new start pad
+    game_cfg.x0[0] = game_cfg.spad_x1 + (game_cfg.spad_width / 2
+                                         ) - (lander_cfg.width / 2)
+
+    if cfg.verbose:
+        print(f"Pad positions random with seed: {game_cfg.current_seed}")
+        print(f"  Start Pad x1: {game_cfg.spad_x1}, "
+              f"Landing Pad x1: {game_cfg.lpad_x1}")
+        print(f"  Lander Initial x0: {game_cfg.x0[0]:.2f}")
 
 
 def draw_game(screen: pygame.Surface, logic, visuals: LanderVisuals,

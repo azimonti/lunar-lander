@@ -11,7 +11,7 @@
 #include <numeric>
 #include <stdexcept>
 #include <vector>
-#include "game_logic.h" // Template definitions are often included directly or via .tpp file
+#include "game_logic.h"
 
 // --- Constructor ---
 template <typename T>
@@ -32,7 +32,6 @@ GameLogicCpp<T>::GameLogicCpp(bool no_print_flag)
       lcfg_width(T(10.0)), lcfg_height(T(10.0)),                   // Default lander dimensions
       pcfg_mu_x(T(0.0)), pcfg_mu_y(T(0.0)), gcfg_terrain_y(T(0.0)), ground_level(T(0.0))
 {
-    // reset(); // Reset is called after set_config typically
 }
 
 // --- Configuration Setting ---
@@ -81,17 +80,6 @@ void GameLogicCpp<T>::set_config(T cfg_w, T cfg_h, T gcfg_pad_y1, T gcfg_terrain
     recalculate_derived_values(); // Calculate ground level etc.
 }
 
-template <typename T> void GameLogicCpp<T>::update_pad_positions(T spad_x1, T lpad_x1_new)
-{
-    // Assuming spad_x1 is not used based on Python logic, but keeping param
-    // Assuming lpad_width is fixed and set during set_config or has a default
-    // If lpad_width needs to be passed too, modify the signature
-    this->lpad_x1 = lpad_x1_new;
-    (void)spad_x1;
-    // Need lpad_width to be set before calling this
-    recalculate_derived_values();
-}
-
 template <typename T> void GameLogicCpp<T>::recalculate_derived_values()
 {
     // Calculate landing pad center and y-coordinate
@@ -136,17 +124,16 @@ template <typename T> void GameLogicCpp<T>::reset()
 }
 
 // Overload reset to accept specific pad positions and calculate initial x
-template <typename T> void GameLogicCpp<T>::reset(T spad_x1, T lpad_x1_new)
+template <typename T> void GameLogicCpp<T>::reset(T spad_x1_new, T lpad_x1_new)
 {
-    update_pad_positions(spad_x1, lpad_x1_new); // Update landing pad info first
-
-    // Call the standard reset logic to reset most variables (vy, fuel, flags etc.)
-    reset();
-
-    // Calculate the lander's starting x to be centered on the start pad
-    // This mirrors the logic in Python's reset_pad_positions
-    x = spad_x1 + (spad_width / T(2.0)) - (lcfg_width / T(2.0));
+    lpad_x1   = lpad_x1_new;
+    // Need lpad_width to be set before calling this
+    //  Update lander initial x position based on the new start pad
+    initial_x = spad_x1_new + (spad_width / T(2.0)) - (lcfg_width / T(2.0));
     // Keep the y position from the standard reset (initial_y)
+    // Call the standard reset logic to reset most variables (vy, fuel, flags etc.)
+    recalculate_derived_values();
+    reset();
 }
 
 template <typename T> void GameLogicCpp<T>::apply_action(int action)

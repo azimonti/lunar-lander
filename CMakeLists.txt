@@ -3,7 +3,7 @@ project(libgame_logic CXX)
 
 set (PROJECT_VERSION "1.0"    )
 project(${PROJECT_NAME} VERSION ${PROJECT_VERSION})
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/../externals/ma-libs/cmake_modules")
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/externals/ma-libs/cmake_modules")
 include( COMPILERCOMMON     )
 include( COMPILERCPP        )
 include( FindLIBS           )
@@ -46,18 +46,18 @@ find_package(pybind11 REQUIRED)
 # --- Build the static library ---
 add_library(game_logic_cpp STATIC
     src/game_logic.cpp
-    src/game_logic.h
+    src/game_utils.cpp
 )
 target_include_directories(game_logic_cpp PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_compile_features(game_logic_cpp PUBLIC cxx_std_17)
 
 # Add the pybind11 module
 # The module name 'cpp_game_logic' must match PYBIND11_MODULE macro in pybind_game_logic.cpp
-pybind11_add_module(cpp_game_logic SHARED
-    src/pybind_game_logic.cpp
+pybind11_add_module(lunar_lander_cpp SHARED
+    src/lunar_lander_cpp.cpp
 )
 
 # Link the Python module against the static library
-target_link_libraries(cpp_game_logic PRIVATE game_logic_cpp)
+target_link_libraries(lunar_lander_cpp PRIVATE game_logic_cpp)
 
 message(STATUS "Configuring libgame_logic C++ library and Python bindings.")

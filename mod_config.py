@@ -88,122 +88,6 @@ game_cfg = SimpleNamespace(
     current_seed=None           # Seed used for the current pad positions
 )
 
-
-def generate_random_pad_positions(seed=None,
-                                  force_left_to_right=False,
-                                  force_right_to_left=False):
-    """Generates random, non-overlapping positions
-       for start and landing pads
-       using a simple generate-and-test approach."""
-    MIN_PAD_SEPARATION = 10
-    BORDER_LEFT = 10
-    BORDER_RIGHT = 10
-    screen_width = cfg.width
-    spad_width = game_cfg.spad_width
-    lpad_width = game_cfg.lpad_width
-    if seed is not None:
-        random.seed(seed)
-
-    # Loop indefinitely until a valid configuration is found
-    while True:
-        # Generate random starting points anywhere on the screen width
-        # Note: randint includes the upper bound, so screen_width is possible,
-        # but the right edge check below will handle it.
-        spad_x1 = random.randint(BORDER_LEFT, int(screen_width))
-        lpad_x1 = random.randint(BORDER_LEFT, int(screen_width))
-
-        # 1. Check Right Boundary: Ensure pads don't go off the right edge
-        spad_ok = (spad_x1 + spad_width <= (screen_width - BORDER_RIGHT))
-        lpad_ok = (lpad_x1 + lpad_width <= (screen_width - BORDER_RIGHT))
-
-        if not spad_ok or not lpad_ok:
-            continue  # Invalid placement, try again
-
-        # 2. Check Separation: Ensure pads don't overlap
-        # and have minimum separation
-        center_spad = spad_x1 + spad_width / 2
-        center_lpad = lpad_x1 + lpad_width / 2
-        min_dist_centers = (spad_width / 2) + \
-            (lpad_width / 2) + MIN_PAD_SEPARATION
-
-        if abs(center_spad - center_lpad) >= min_dist_centers:
-            # Valid geometric configuration found
-            needs_mirror = False
-            if force_left_to_right and (center_spad >= center_lpad):
-                # Spad is right/equal, but needs to be left -> mirror
-                needs_mirror = True
-            elif force_right_to_left and (center_spad <= center_lpad):
-                # Spad is left/equal, but needs to be right -> mirror
-                needs_mirror = True
-
-            if needs_mirror:
-                # Mirror positions relative to the center of the usable area
-                mid_point = BORDER_LEFT + (
-                    screen_width - BORDER_LEFT - BORDER_RIGHT) / 2.0
-
-                # Mirror centers
-                mirrored_center_spad = 2 * mid_point - center_spad
-                mirrored_center_lpad = 2 * mid_point - center_lpad
-
-                # Update x1 positions based on mirrored centers
-                spad_x1 = mirrored_center_spad - spad_width / 2.0
-                lpad_x1 = mirrored_center_lpad - lpad_width / 2.0
-
-            # Configuration is now geometrically valid
-            # and directionally correct (if forced)
-            break  # Exit the while loop
-
-        # else: continue loop to generate a new pair
-
-    # Return the validated pair
-    return int(spad_x1), int(lpad_x1)
-
-
-def reset_pad_positions(seed=None, force_left_to_right=False,
-                        force_right_to_left=False):
-    """Resets the pad positions if random_position is True.
-    Uses provided seed or generates one."""
-    # global game_cfg  # Ensure we modify the global game_cfg
-    if game_cfg.random_position:
-        if seed is None:
-            # Generate a new seed if none provided for reproducibility tracking
-            seed = random.randint(0, 2**32 - 1)
-        game_cfg.current_seed = seed
-        game_cfg.spad_x1, game_cfg.lpad_x1 = generate_random_pad_positions(
-            seed=game_cfg.current_seed,
-            force_left_to_right=force_left_to_right,
-            force_right_to_left=force_right_to_left
-        )
-        # Update lander initial x position to be centered on the new start pad
-        game_cfg.x0[0] = game_cfg.spad_x1 + (game_cfg.spad_width / 2
-                                             ) - (lander_cfg.width / 2)
-
-        if cfg.verbose:
-            print(f"Pad positions random with seed: {game_cfg.current_seed}")
-            print(f"  Start Pad x1: {game_cfg.spad_x1}, "
-                  f"Landing Pad x1: {game_cfg.lpad_x1}")
-            print(f"  Lander Initial x0: {game_cfg.x0[0]:.2f}")
-
-
-def set_pad_positions(spad_x1, lpad_x1):
-    """Sets the pad positions to specific values."""
-    # global game_cfg, lander_cfg, cfg # Ensure access if needed
-
-    game_cfg.spad_x1 = spad_x1
-    game_cfg.lpad_x1 = lpad_x1
-
-    # Update lander initial x position based on the new start pad
-    game_cfg.x0[0] = game_cfg.spad_x1 + (game_cfg.spad_width / 2
-                                         ) - (lander_cfg.width / 2)
-
-    # Optionally log the manual setting
-    if cfg.verbose:
-        print("Pad positions set manually:")
-        print(f"  Start Pad x1: {game_cfg.spad_x1}, "
-              f"Landing Pad x1: {game_cfg.lpad_x1}")
-        print(f"  Lander Initial x0: {game_cfg.x0[0]:.2f}")
-
-
 planet_cfg = SimpleNamespace(
     g=0.05,                     # gravitational acceleration
     mu_x=0.01,                  # friction in the x direction
@@ -225,8 +109,8 @@ nn_config = SimpleNamespace(
     save_path_nn="./data/",  # save path
     save_interval=25,       # save every n generations
     epochs=1000,            # number of training epochs
-    layout_nb=50,           # number of multiple layout
-    left_right_ratio=0.5,   # ratio of left vs right layout
+    layout_nb=3,           # number of multiple layout
+    left_right_ratio=0.0,   # ratio of left vs right layout
     verbose=False
 )
 

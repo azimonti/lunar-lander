@@ -12,8 +12,7 @@ import shutil
 import time
 import math
 
-from mod_config import cfg, nn_config, game_cfg, planet_cfg, lander_cfg, \
-    generate_random_pad_positions, set_pad_positions
+from mod_config import cfg, nn_config, game_cfg, planet_cfg, lander_cfg
 
 cwd = os.getcwd()
 build_dir = os.path.join(cwd, "./externals/ma-libs/build")
@@ -24,7 +23,8 @@ else:
 sys.path.append(os.path.realpath(build_path))
 try:
     import cpp_nn_py2 as cpp_nn_py
-    from cpp_game_logic import GameLogicCppDouble as GameLogicCpp
+    from lunar_lander_cpp import GameLogicCppDouble as GameLogicCpp, \
+            generate_random_pad_positions
 except ModuleNotFoundError as e:
     print(f"Error: {e}")
 
@@ -143,8 +143,6 @@ class NeuralNetwork():
             for layout_idx, layout_info in enumerate(layouts):
                 # Use the C++ GameLogic implementation
                 game_sim = GameLogicCpp(no_print_flag=True)
-                set_pad_positions(layout_info['spad_x1'],
-                                  layout_info['lpad_x1'])
 
                 # --- Configure the C++ Game Logic Instance ---
                 # Use the current global config values
@@ -168,7 +166,7 @@ class NeuralNetwork():
 
                 # --- Reset the C++ logic using the CURRENT pad pos  ---
                 # Ensures the instance uses the specific layout for the run
-                game_sim.reset(game_cfg.spad_x1, game_cfg.lpad_x1)
+                game_sim.reset(layout_info['spad_x1'], layout_info['lpad_x1'])
 
                 # Get initial state into buffer
                 game_sim.get_state(state_buffer)
@@ -213,8 +211,6 @@ class NeuralNetwork():
             for layout_idx, layout_info in enumerate(layouts):
                 # Use the C++ GameLogic implementation
                 game_sim = GameLogicCpp(no_print_flag=True)
-                set_pad_positions(layout_info['spad_x1'],
-                                  layout_info['lpad_x1'])
 
                 # --- Configure the C++ Game Logic Instance ---
                 # Use the current global config values
@@ -238,7 +234,7 @@ class NeuralNetwork():
 
                 # --- Reset the C++ logic using the CURRENT pad pos  ---
                 # Ensures the instance uses the specific layout for the run
-                game_sim.reset(game_cfg.spad_x1, game_cfg.lpad_x1)
+                game_sim.reset(layout_info['spad_x1'], layout_info['lpad_x1'])
 
                 # Get initial state into buffer
                 game_sim.get_state(state_buffer)
@@ -290,7 +286,8 @@ class NeuralNetwork():
         left_to_right_count = 0
         right_to_left_count = 0
         for i in range(num_layouts):
-            spad_x1, lpad_x1 = generate_random_pad_positions()
+            spad_x1, lpad_x1 = generate_random_pad_positions(
+                cfg.width, game_cfg.spad_width, game_cfg.lpad_width)
             layouts.append({'spad_x1': spad_x1, 'lpad_x1': lpad_x1})
             # Determine direction based on center points for accuracy
             spad_center = spad_x1 + game_cfg.spad_width / 2

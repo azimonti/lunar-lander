@@ -27,29 +27,29 @@ source "${MYVENV}/${SCRIPTDIR}/activate"
 cd externals/ma-libs
 ./cbuild.sh --build-type Debug --cmake-params "-DCPP_LIBNN=ON -DPYTHON_LIBNN=ON"
 ./cbuild.sh --build-type Release --cmake-params "-DCPP_LIBNN=ON -DPYTHON_LIBNN=ON"
-mkdir -p build/game_logic/Debug
-mkdir -p build/game_logic/Release
-cd build/game_logic
+mkdir -p build/lunar_lander_cpp/Debug
+mkdir -p build/lunar_lander_cpp/Release
+cd build/lunar_lander_cpp
 
 if [[ -z "${NPROC}" ]]; then (( NPROC = $(nproc) - 1 )); fi
 
 if [ "${MACHINE}" == "macos" ]; then
   cd Debug
-  cmake ../../../../../libgame_logic -DCMAKE_BUILD_TYPE="Debug"
+  cmake ../../../../.. -DCMAKE_BUILD_TYPE="Debug"
   cd ../Release
-  cmake ../../../../../libgame_logic -DCMAKE_BUILD_TYPE="Release"
+  cmake ../../../../.. -DCMAKE_BUILD_TYPE="Release"
 elif [ "${MACHINE}" == "linux" ]; then
   cd Debug
-  cmake ../../../../../libgame_logic -DCMAKE_BUILD_TYPE="Debug"
+  cmake ../../../../.. -DCMAKE_BUILD_TYPE="Debug"
   cd ../Release
-  cmake ../../../../../libgame_logic -DCMAKE_BUILD_TYPE="Release"
+  cmake ../../../../.. -DCMAKE_BUILD_TYPE="Release"
 else
   WINARCH="x64"
   if [[ $PROCESSOR_IDENTIFIER == *"ARM"* ]]; then WINARCH="ARM64"; fi
   cd Debug
-  cmake -A "${WINARCH}" ../../../../../libgame_logic -DCMAKE_BUILD_TYPE="Debug"
+  cmake -A "${WINARCH}" ../../../../.. -DCMAKE_BUILD_TYPE="Debug"
   cd ../Release
-  cmake -A "${WINARCH}" ../../../../../libgame_logic -DCMAKE_BUILD_TYPE="Release"
+  cmake -A "${WINARCH}" ../../../../.. -DCMAKE_BUILD_TYPE="Release"
 fi
 
 
