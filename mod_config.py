@@ -165,7 +165,7 @@ def export_text_config():
 
     file_path = "config.txt"
     try:
-        with open(file_path, "w") as f:
+        with open(file_path, "w", newline='\n') as f:
             current_date = datetime.datetime.now().strftime("%Y/%m/%d")
             f.write("# Lunar Lander Configuration File\n")
             f.write(f"# Version {CONFIG_VERSION} - "

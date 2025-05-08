@@ -102,7 +102,7 @@ namespace Config
     // Function to load configuration from a file
     bool loadConfiguration(const std::string& filepath)
     {
-        std::ifstream configFile(filepath);
+        std::ifstream configFile(filepath, std::ios::binary);
         if (!configFile.is_open())
         {
             std::cerr << "Error: Could not open configuration file: " << filepath << std::endl;
