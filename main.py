@@ -2,12 +2,12 @@
 /******************/
 /*     main.py    */
 /*  Version 2.0   */
-/*   2025/04/27   */
+/*   2025/05/08   */
 /******************/
 '''
 from mod_lander import LanderVisuals
 from mod_config import palette, cfg, game_cfg,  planet_cfg, lander_cfg
-from mod_nn_train import NeuralNetwork
+from mod_nn_play import NeuralNetwork
 import pygame
 import argparse
 import glob
@@ -17,15 +17,11 @@ import sys
 from types import SimpleNamespace
 
 cwd = os.getcwd()
-build_dir = os.path.join(cwd, "./externals/ma-libs/build")
-if "DEBUG" in os.environ:
-    build_path = os.path.join(build_dir, "Debug")
-else:
-    build_path = os.path.join(build_dir, "Release")
-sys.path.append(os.path.realpath(build_path))
+build_dir = os.path.join(cwd, "./externals/ma-libs/build/Release")
+sys.path.append(os.path.realpath(build_dir))
 try:
     from lunar_lander_cpp import GameLogicCppDouble as GameLogicCpp, \
-            generate_random_pad_positions
+        generate_random_pad_positions
 except ModuleNotFoundError as e:
     print(f"Error: {e}")
 
@@ -169,7 +165,6 @@ def game_loop(mode: str):
     start_time = 0  # Initialize timer variable
     if mode == 'nn_play':
         NN = NeuralNetwork()
-        NN.load()
         start_time = pygame.time.get_ticks()  # Get start time in milliseconds
 
     running = True
@@ -270,15 +265,10 @@ def main():
         description="Lunar Lander Game with NN option.")
     parser.add_argument(
         '--mode',
-        type=str, choices=['play', 'nn_train', 'nn_play'], default='play',
+        type=str, choices=['play', 'nn_play'], default='play',
         help=("Mode to run: 'play' (manual), 'train' "
               "(NN training, no GUI), 'nn_play' (NN plays with GUI).")
     )
-    parser.add_argument(
-        '--continue', dest="cont", action='store_true',
-        default=False, help="Continue training from checkpoint")
-    parser.add_argument(
-        '--step', type=int, help="Checkpoint step to load")
     parser.add_argument(
         '--left_to_right', dest="force_left_to_right", action='store_true',
         default=False, help="Force the start pad to be on the right")
@@ -307,16 +297,6 @@ def main():
                             force_right_to_left=args.force_right_to_left)
         print("Starting game in NN Play mode...")
         game_loop(mode='nn_play')
-    elif args.mode == 'nn_train':
-        NN = NeuralNetwork()
-        if args.cont:
-            if args.step:
-                NN.load(args.step)
-            else:
-                NN.load()
-        else:
-            NN.init()
-        NN.train()
 
     print("Exiting.")
 
