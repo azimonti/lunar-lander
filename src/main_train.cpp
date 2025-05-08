@@ -8,11 +8,18 @@
 #include <sstream>
 #include <string>
 #include <vector>
-#include "config_cpp.h"
+#include "config_loader.h"
 #include "nn_engine_trainer.h"
 
 int main(int argc, char* argv[])
 {
+    // Load configuration from file first
+    if (!Config::loadConfiguration("config.txt"))
+    {
+        std::cerr << "FATAL: Could not load configuration from config.txt. Exiting." << std::endl;
+        return 1;
+    }
+
     // Determine the type based on configuration
 #if defined(USE_FLOAT)
     using TDataType = float;

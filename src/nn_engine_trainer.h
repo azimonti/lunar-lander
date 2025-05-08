@@ -13,7 +13,6 @@
 #include <string>
 #include <vector>
 #include "ann_mlp_ga_v1.h"
-#include "config_cpp.h"
 
 namespace Training
 {

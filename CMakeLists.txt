@@ -77,6 +77,7 @@ endif()
 add_executable(main_train_d
     src/main_train.cpp
     src/nn_engine_trainer.cpp
+    src/config_loader.cpp
 )
 target_link_libraries(main_train_d PRIVATE game_logic_cpp debug cpp_nn2staticd optimized cpp_nn2static)
 set_target_properties(   main_train_d   PROPERTIES DEBUG_POSTFIX "d"               )
@@ -87,6 +88,7 @@ endif()
 add_executable(main_train_f
     src/main_train.cpp
     src/nn_engine_trainer.cpp
+    src/config_loader.cpp
 )
 target_link_libraries(main_train_f PRIVATE game_logic_cpp debug cpp_nn2staticd optimized cpp_nn2static)
 target_compile_definitions( main_train_f PRIVATE USE_FLOAT                         )

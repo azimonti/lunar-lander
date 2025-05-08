@@ -1,15 +1,15 @@
 '''
 /******************/
 /*  mod_config.py */
-/*  Version 2.0   */
-/*   2025/05/08   */
+/*  Version 2.1   */
+/*   2025/05/09   */
 /******************/
 '''
+import datetime
 import numpy as np
-import random
 from types import SimpleNamespace
 
-
+CONFIG_VERSION = 2.1
 RETINA_SCALE = 2
 
 palette = SimpleNamespace(
@@ -116,201 +116,66 @@ nn_config = SimpleNamespace(
 )
 
 
-def export_cpp_config():
-    # Ensure all required global variables are accessible.
-    # These are: RETINA_SCALE, palette, lander_cfg, cfg, game_cfg, planet_cfg, nn_config
-    # numpy (as np) should also be available for game_cfg arrays.
+def format_value(value):
+    if isinstance(value, bool):
+        return str(value).lower()
+    elif isinstance(value, (list, tuple, np.ndarray)):
+        return ",".join(map(str, value))
+    elif isinstance(value, str):
+        return value  # Strings are written as is
+    elif value is None:
+        return "0"  # Represent None as 0 for current_seed
+    else:
+        return str(value)
 
-    # Determine which lander_cfg to use (it's globally set by 'lander_cfg = lander_cfg_1' or similar)
+
+def export_text_config():
     active_lander_cfg = lander_cfg
+    config_data = []
 
-    # Prepare the C++ content
-    # Note: Python's True/False will be converted to C++'s true/false strings.
-    # Numpy arrays like game_cfg.x0 will have their elements extracted.
-    cpp_content = """\
-#ifndef _CONFIG_CPP_H_303ecb31ae304863961708f4a1fa3410_
-#define _CONFIG_CPP_H_303ecb31ae304863961708f4a1fa3410_
+    # LanderCfg - only include width, height, max_fuel
+    config_data.append("LanderCfg.width = "
+                       f"{format_value(active_lander_cfg.width)}")
+    config_data.append("LanderCfg.height = "
+                       f"{format_value(active_lander_cfg.height)}")
+    config_data.append("LanderCfg.max_fuel = "
+                       f"{format_value(active_lander_cfg.max_fuel)}")
 
-/******************/
-/*  config_cpp.h  */
-/*  Version 1.0   */
-/*   2023/05/08   */
-/******************/
+    for key, value in vars(cfg).items():
+        config_data.append(f"Cfg.{key} = {format_value(value)}")
 
+    _game_cfg_x0 = np.array([52.0, cfg.height - active_lander_cfg.height - 52])
 
-#include <string>
-#include <vector>
-#include <array>
+    for key, value in vars(game_cfg).items():
+        if key == 'x0':
+            config_data.append(f"GameCfg.{key} = "
+                               f"{format_value(_game_cfg_x0)}")
+        elif key == 'current_seed':
+            config_data.append(
+                    f"GameCfg.{key} = "
+                    f"{format_value(0 if value is None else value)}")
+        else:
+            config_data.append(f"GameCfg.{key} = {format_value(value)}")
 
-namespace Config {{
+    for key, value in vars(planet_cfg).items():
+        config_data.append(f"PlanetCfg.{key} = {format_value(value)}")
 
-const int RETINA_SCALE = {retina_scale};
+    for key, value in vars(nn_config).items():
+        config_data.append(f"NNConfig.{key} = {format_value(value)}")
 
-namespace Palette {{
-    const std::array<int, 3> b = {{{b_0}, {b_1}, {b_2}}};
-    const std::array<int, 3> o = {{{o_0}, {o_1}, {o_2}}};
-    const std::array<int, 3> r = {{{r_0}, {r_1}, {r_2}}};
-    const std::array<int, 3> g = {{{g_0}, {g_1}, {g_2}}};
-    const std::array<int, 3> p = {{{p_0}, {p_1}, {p_2}}};
-    const std::array<int, 3> w = {{{w_0}, {w_1}, {w_2}}};
-    const std::array<int, 3> k = {{{k_0}, {k_1}, {k_2}}};
-}} // namespace Palette
-
-namespace LanderCfg {{
-    const double width = {lc_width};          // width of the lander
-    const double height = {lc_height};         // height of the lander
-    const double vf_width = {lc_vf_width};         // width of the vertical flames
-    const double vf_height = {lc_vf_height};        // height of the vertical flames
-    const double vf_yoffset = {lc_vf_yoffset};       // offset y of the vertical flames
-    const double hf_width = {lc_hf_width};         // width of the horizontal flames
-    const double hf_height = {lc_hf_height};       // height of the horizontal flames
-    const double hf_xoffset_l = {lc_hf_xoffset_l};    // offset x of the horizontal left flames
-    const double hf_yoffset_l = {lc_hf_yoffset_l};    // offset y of the vertical left flames
-    const double hf_xoffset_r = {lc_hf_xoffset_r};    // offset x of the horizontal right flames
-    const double hf_yoffset_r = {lc_hf_yoffset_r};     // offset y of the vertical right flames
-    const int max_fuel = {lc_max_fuel};       // maximum fuel capacity for the lander
-    const std::string img = "{lc_img}";       // image name
-}} // namespace LanderCfg
-
-namespace Cfg {{
-    const double width = {c_width};     // window resolution width
-    const double height = {c_height};    // window resolution height
-    const int fps = {c_fps};                        // frames per second
-    const bool save_img = {c_save_img};                // save image
-    const std::string save_path_img = "{c_save_path_img}";    // save image path
-    const bool with_sounds = {c_with_sounds};             // use sounds
-    const bool verbose = {c_verbose};
-}} // namespace Cfg
-
-namespace GameCfg {{
-    const bool random_position = {gc_random_position};       // set randomly the pad
-    const std::vector<double> x0 = {{{gc_x0_0}, {gc_x0_1}}};    // initial position [x, y]
-    const std::vector<double> v0 = {{{gc_v0_0}, {gc_v0_1}}};    // initial velocity [vx, vy]
-    const std::vector<double> a0 = {{{gc_a0_0}, {gc_a0_1}}};    // initial acceleration [ax, ay]
-    const double spad_x1 = {gc_spad_x1};                 // takeoff pad left boundary (x1)
-    const double spad_width = {gc_spad_width};              // takeoff pad width
-    const double lpad_x1 = {gc_lpad_x1};    // landing pad left boundary (x1)
-    const double lpad_width = {gc_lpad_width};             // landing pad width
-    const double pad_y1 = {gc_pad_y1};     // landing/ takeoff pad top boundary (y1)
-    const double pad_height = {gc_pad_height};              // landing/ takeoff pad height
-    const double terrain_y = {gc_terrain_y};               // set the zero of the terrain
-    const double max_vx = {gc_max_vx};                 // max horizontal speed when landing
-    const double max_vy = {gc_max_vy};                 // max vertical speed when landing
-    const int max_steps = {gc_max_steps};             // max steps per simulation episode
-    const int current_seed = {gc_current_seed};           // Seed used for the current pad positions (None -> 0)
-}} // namespace GameCfg
-
-namespace PlanetCfg {{
-    const double g = {pc_g};                     // gravitational acceleration
-    const double mu_x = {pc_mu_x};                  // friction in the x direction
-    const double mu_y = {pc_mu_y};                   // friction in the y direction
-}} // namespace PlanetCfg
-
-namespace NNConfig {{
-    const std::string name = "{nnc_name}";    // nn name
-    const std::vector<int> hlayers = {{{nnc_hlayers_str}}};   // hidden layer structure
-    const bool use_float = {nnc_use_float};        // allow switch between c++ float and double
-    const int seed = {nnc_seed};              // seed
-    const int top_individuals = {nnc_top_individuals};     // number of top individuals to be selected
-    const int population_size = {nnc_population_size};    // population size
-    const bool mixed_population = {nnc_mixed_population};  // use mixed population
-    const bool elitism = {nnc_elitism};           // keep the best individual as-is
-    const int activation_id = {nnc_activation_id};        // SIGMOID=0, TANH=1
-    const bool save_nn = {nnc_save_nn};           // save
-    const bool overwrite = {nnc_overwrite};        // save overwriting
-    const std::string save_path_nn = "{nnc_save_path_nn}";  // save path
-    const int save_interval = {nnc_save_interval};       // save every n generations
-    const int epochs = {nnc_epochs};            // number of training epochs
-    const int layout_nb = {nnc_layout_nb};           // number of multiple layout
-    const double left_right_ratio = {nnc_left_right_ratio};   // ratio of left vs right layout
-    const bool multithread = {nnc_multihread};         // multithread
-    const bool verbose = {nnc_verbose};
-}}
-
-}}
-
-#endif // CONFIG_CPP_H
-""".format(
-        retina_scale=RETINA_SCALE,
-
-        b_0=palette.b[0], b_1=palette.b[1], b_2=palette.b[2],
-        o_0=palette.o[0], o_1=palette.o[1], o_2=palette.o[2],
-        r_0=palette.r[0], r_1=palette.r[1], r_2=palette.r[2],
-        g_0=palette.g[0], g_1=palette.g[1], g_2=palette.g[2],
-        p_0=palette.p[0], p_1=palette.p[1], p_2=palette.p[2],
-        w_0=palette.w[0], w_1=palette.w[1], w_2=palette.w[2],
-        k_0=palette.k[0], k_1=palette.k[1], k_2=palette.k[2],
-
-        lc_width=active_lander_cfg.width,
-        lc_height=active_lander_cfg.height,
-        lc_vf_width=active_lander_cfg.vf_width,
-        lc_vf_height=active_lander_cfg.vf_height,
-        lc_vf_yoffset=active_lander_cfg.vf_yoffset,
-        lc_hf_width=active_lander_cfg.hf_width,
-        lc_hf_height=active_lander_cfg.hf_height,
-        lc_hf_xoffset_l=active_lander_cfg.hf_xoffset_l,
-        lc_hf_yoffset_l=active_lander_cfg.hf_yoffset_l,
-        lc_hf_xoffset_r=active_lander_cfg.hf_xoffset_r,
-        lc_hf_yoffset_r=active_lander_cfg.hf_yoffset_r,
-        lc_max_fuel=active_lander_cfg.max_fuel,
-        lc_img=active_lander_cfg.img,
-
-        c_width=cfg.width,
-        c_height=cfg.height,
-        c_fps=cfg.fps,
-        c_save_img=str(cfg.save_img).lower(),
-        c_save_path_img=cfg.save_path_img,
-        c_with_sounds=str(cfg.with_sounds).lower(),
-        c_verbose=str(cfg.verbose).lower(),
-
-        gc_random_position=str(game_cfg.random_position).lower(),
-        gc_x0_0=game_cfg.x0[0], gc_x0_1=game_cfg.x0[1],
-        gc_v0_0=game_cfg.v0[0], gc_v0_1=game_cfg.v0[1],
-        gc_a0_0=game_cfg.a0[0], gc_a0_1=game_cfg.a0[1],
-        gc_spad_x1=game_cfg.spad_x1,
-        gc_spad_width=game_cfg.spad_width,
-        gc_lpad_x1=game_cfg.lpad_x1,
-        gc_lpad_width=game_cfg.lpad_width,
-        gc_pad_y1=game_cfg.pad_y1,
-        gc_pad_height=game_cfg.pad_height,
-        gc_terrain_y=game_cfg.terrain_y,
-        gc_max_vx=game_cfg.max_vx,
-        gc_max_vy=game_cfg.max_vy,
-        gc_max_steps=game_cfg.max_steps,
-        gc_current_seed=0 if game_cfg.current_seed is None else game_cfg.current_seed,
-
-        pc_g=planet_cfg.g,
-        pc_mu_x=planet_cfg.mu_x,
-        pc_mu_y=planet_cfg.mu_y,
-
-        nnc_name=nn_config.name,
-        nnc_hlayers_str=", ".join(map(str, nn_config.hlayers)),
-        nnc_use_float=str(nn_config.use_float).lower(),
-        nnc_seed=nn_config.seed,
-        nnc_top_individuals=nn_config.top_individuals,
-        nnc_population_size=nn_config.population_size,
-        nnc_mixed_population=str(nn_config.mixed_population).lower(),
-        nnc_elitism=str(nn_config.elitism).lower(),
-        nnc_activation_id=nn_config.activation_id,
-        nnc_save_nn=str(nn_config.save_nn).lower(),
-        nnc_overwrite=str(nn_config.overwrite).lower(),
-        nnc_save_path_nn=nn_config.save_path_nn,
-        nnc_save_interval=nn_config.save_interval,
-        nnc_epochs=nn_config.epochs,
-        nnc_layout_nb=nn_config.layout_nb,
-        nnc_left_right_ratio=nn_config.left_right_ratio,
-        nnc_multihread=str(nn_config.multithread).lower(),
-        nnc_verbose=str(nn_config.verbose).lower()
-    )
-
-    file_path = "src/config_cpp.h"
+    file_path = "config.txt"
     try:
         with open(file_path, "w") as f:
-            f.write(cpp_content)
+            current_date = datetime.datetime.now().strftime("%Y/%m/%d")
+            f.write("# Lunar Lander Configuration File\n")
+            f.write(f"# Version {CONFIG_VERSION} - "
+                    f"Generated on {current_date}\n\n")
+            for line in config_data:
+                f.write(line + "\n")
         print(f"Configuration successfully exported to {file_path}")
     except Exception as e:
         print(f"Error exporting configuration: {e}")
 
 
 if __name__ == '__main__':
-    export_cpp_config()
+    export_text_config()

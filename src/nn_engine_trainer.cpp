@@ -18,7 +18,7 @@
 #include <string>
 #include <vector>
 #include "thread/thread_pool.hpp"
-#include "config_cpp.h"
+#include "config_loader.h" // Changed from config_cpp.h
 #include "game_logic.h"
 #include "game_utils.h"
 #include "nn_engine_trainer.h"
