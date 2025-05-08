@@ -99,6 +99,7 @@ namespace Config
         const int epochs               = 1000;           // number of training epochs
         const int layout_nb            = 50;             // number of multiple layout
         const double left_right_ratio  = 0.5;            // ratio of left vs right layout
+        const bool multithread         = true;           // multithread
         const bool verbose             = false;
     } // namespace NNConfig
 

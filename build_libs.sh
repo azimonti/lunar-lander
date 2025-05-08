@@ -1,5 +1,20 @@
 #!/bin/bash
 
+# Default build type
+BUILD_TYPE="Release"
+
+# Parse command-line arguments
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        -d|--debug) BUILD_TYPE="Debug"; shift ;;
+        -r|--release) BUILD_TYPE="Release"; shift ;;
+        *) echo "Unknown parameter passed: $1"; exit 1 ;;
+    esac
+    shift
+done
+
+echo "Selected build type: ${BUILD_TYPE}"
+
 unameOut="$(uname -s)"
 case "${unameOut}" in
   Linux*)   MACHINE=linux;;
@@ -25,44 +40,38 @@ echo "Activating the virtual environment..."
 source "${MYVENV}/${SCRIPTDIR}/activate"
 
 cd externals/ma-libs
-./cbuild.sh --build-type Debug --cmake-params "-DCPP_LIBNN=ON -DPYTHON_LIBNN=ON"
-./cbuild.sh --build-type Release --cmake-params "-DCPP_LIBNN=ON -DPYTHON_LIBNN=ON"
-mkdir -p build/lunar_lander_cpp/Debug
-mkdir -p build/lunar_lander_cpp/Release
-cd build/lunar_lander_cpp
+./cbuild.sh --build-type "${BUILD_TYPE}" --cmake-params "-DCPP_LIBNN=ON -DPYTHON_LIBNN=ON"
 
-if [[ -z "${NPROC}" ]]; then (( NPROC = $(nproc) - 1 )); fi
+cd ../.. # Go back to project root to ensure consistent paths
+mkdir -p externals/ma-libs/build/lunar_lander_cpp/"${BUILD_TYPE}"
+cd externals/ma-libs/build/lunar_lander_cpp
+
+if [[ -z "${NPROC}" ]]; then
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    NPROC=$(sysctl -n hw.ncpu)
+  else
+    NPROC=$(nproc)
+  fi
+  (( NPROC = NPROC > 1 ? NPROC - 1 : 1 ))
+fi
+
+cd "${BUILD_TYPE}"
 
 if [ "${MACHINE}" == "macos" ]; then
-  cd Debug
-  cmake ../../../../.. -DCMAKE_BUILD_TYPE="Debug"
-  cd ../Release
-  cmake ../../../../.. -DCMAKE_BUILD_TYPE="Release"
+  cmake ../../../../.. -DCMAKE_BUILD_TYPE="${BUILD_TYPE}"
 elif [ "${MACHINE}" == "linux" ]; then
-  cd Debug
-  cmake ../../../../.. -DCMAKE_BUILD_TYPE="Debug"
-  cd ../Release
-  cmake ../../../../.. -DCMAKE_BUILD_TYPE="Release"
+  cmake ../../../../.. -DCMAKE_BUILD_TYPE="${BUILD_TYPE}"
 else
   WINARCH="x64"
   if [[ $PROCESSOR_IDENTIFIER == *"ARM"* ]]; then WINARCH="ARM64"; fi
-  cd Debug
-  cmake -A "${WINARCH}" ../../../../.. -DCMAKE_BUILD_TYPE="Debug"
-  cd ../Release
-  cmake -A "${WINARCH}" ../../../../.. -DCMAKE_BUILD_TYPE="Release"
+  cmake -A "${WINARCH}" ../../../../.. -DCMAKE_BUILD_TYPE="${BUILD_TYPE}"
 fi
 
 
 if [ "${MACHINE}" == "cygwin" ] || [ "${MACHINE}" == "mingw" ]; then
-  cd ../Debug
-  CMAKE_BUILD_PARALLEL_LEVEL=3 cmake --build ./ --config "Debug"
-  cd ../Release
-  CMAKE_BUILD_PARALLEL_LEVEL=3 cmake --build ./ --config "Release"
+  CMAKE_BUILD_PARALLEL_LEVEL=3 cmake --build ./ --config "${BUILD_TYPE}"
 else
-  cd ../Debug
-  cmake --build ./ --config "Debug" -j "${NPROC}"
-  cd ../Release
-  cmake --build ./ --config "Release" -j "${NPROC}"
+  cmake --build ./ --config "${BUILD_TYPE}" -j "${NPROC}"
 fi
 
-cd ../..
+cd ../../..

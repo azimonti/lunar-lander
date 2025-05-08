@@ -111,6 +111,7 @@ nn_config = SimpleNamespace(
     epochs=1000,            # number of training epochs
     layout_nb=50,           # number of multiple layout
     left_right_ratio=0.5,   # ratio of left vs right layout
+    multithread=True,       # use thread pool
     verbose=False
 )
 
@@ -222,6 +223,7 @@ namespace NNConfig {{
     const int epochs = {nnc_epochs};            // number of training epochs
     const int layout_nb = {nnc_layout_nb};           // number of multiple layout
     const double left_right_ratio = {nnc_left_right_ratio};   // ratio of left vs right layout
+    const bool multithread = {nnc_multihread};         // multithread
     const bool verbose = {nnc_verbose};
 }}
 
@@ -297,6 +299,7 @@ namespace NNConfig {{
         nnc_epochs=nn_config.epochs,
         nnc_layout_nb=nn_config.layout_nb,
         nnc_left_right_ratio=nn_config.left_right_ratio,
+        nnc_multihread=str(nn_config.multithread).lower(),
         nnc_verbose=str(nn_config.verbose).lower()
     )
 

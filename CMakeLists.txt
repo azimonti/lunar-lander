@@ -43,6 +43,7 @@ find_package(pybind11 REQUIRED)
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}/src"                                     )
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}/externals/ma-libs/cpp"                   )
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}/externals/ma-libs/cpp/libnn/src"         )
+include_directories("${CMAKE_CURRENT_SOURCE_DIR}/externals/ma-libs/cpp/utils"             )
 link_directories("${CMAKE_CURRENT_SOURCE_DIR}/externals/ma-libs/build/${CMAKE_BUILD_TYPE}")
 
 # --- Build the static library ---

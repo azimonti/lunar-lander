@@ -75,6 +75,7 @@ namespace Training
         int activation_id_config_;
         bool elitism_config_;
         bool mixed_population_config_;
+        bool multithread_;
         std::vector<size_t> nn_size_config_;
 
         // Cached game/screen config values

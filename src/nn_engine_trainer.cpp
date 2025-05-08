@@ -17,6 +17,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include "thread/thread_pool.hpp"
 #include "config_cpp.h"
 #include "game_logic.h"
 #include "game_utils.h"
@@ -42,6 +43,7 @@ Training::NNEngineTrainer<T>::NNEngineTrainer(bool verbose_override)
     activation_id_config_    = Config::NNConfig::activation_id;
     elitism_config_          = Config::NNConfig::elitism;
     mixed_population_config_ = Config::NNConfig::mixed_population;
+    multithread_             = Config::NNConfig::multithread;
 
     nn_size_config_.push_back(5); // Input layer: 5 state variables
     for (int h_size : Config::NNConfig::hlayers) { nn_size_config_.push_back(static_cast<size_t>(h_size)); }
@@ -392,7 +394,7 @@ template <typename T> void Training::NNEngineTrainer<T>::train()
                   [&](size_t a, size_t b) { return fitness_scores[a] < fitness_scores[b]; });
 
         net_->UpdateWeightsAndBiases(sorted_indices);
-        net_->CreatePopulation(elitism_config_);
+        net_->CreatePopulation(true);
         net_->UpdateEpochs(1);
         current_generation_     = static_cast<int>(net_->GetEpochs());
 
@@ -433,7 +435,9 @@ void Training::NNEngineTrainer<T>::train_generation(
     std::vector<double>& fitness_scores,   // Output: per member total fitness
     std::vector<double>& all_member_steps) // Output: per member total steps
 {
-    std::vector<T> state_buffer(5); // 5 state variables for the lander
+    // Initialize fitness scores and steps to zero for accumulation
+    std::fill(fitness_scores.begin(), fitness_scores.end(), 0.0);
+    std::fill(all_member_steps.begin(), all_member_steps.end(), 0.0);
 
     // Prepare config vectors once
     std::vector<T> x0_T(Config::GameCfg::x0.size());
@@ -443,52 +447,64 @@ void Training::NNEngineTrainer<T>::train_generation(
     std::vector<T> a0_T(Config::GameCfg::a0.size());
     std::copy(Config::GameCfg::a0.begin(), Config::GameCfg::a0.end(), a0_T.begin());
 
-    for (size_t member_id = 0; member_id < population_size; ++member_id)
+    tp::thread_pool pool;
+
+    for (const auto& layout_info : layouts)
     {
-        double total_fitness_for_member = 0.0;
-        double total_steps_for_member   = 0.0;
-
-        for (const auto& layout_info : layouts)
+        for (size_t member_id = 0; member_id < population_size; ++member_id)
         {
-            GameLogicCpp<T> game_sim(true); // true for no_print_flag
+            auto sim_task = [this, &layout_info, member_id, &fitness_scores, &all_member_steps, &x0_T, &v0_T, &a0_T]() {
+                std::vector<T> state_buffer_local(5); // 5 state variables for the lander, local to task
+                GameLogicCpp<T> game_sim(true);       // true for no_print_flag, local to task
 
-            game_sim.set_config(static_cast<T>(Config::Cfg::width), static_cast<T>(Config::Cfg::height),
-                                static_cast<T>(Config::GameCfg::pad_y1), static_cast<T>(Config::GameCfg::terrain_y),
-                                static_cast<T>(Config::GameCfg::max_vx), static_cast<T>(Config::GameCfg::max_vy),
-                                static_cast<T>(Config::PlanetCfg::g), static_cast<T>(Config::PlanetCfg::mu_x),
-                                static_cast<T>(Config::PlanetCfg::mu_y), static_cast<T>(Config::LanderCfg::width),
-                                static_cast<T>(Config::LanderCfg::height), static_cast<T>(Config::LanderCfg::max_fuel),
-                                static_cast<T>(Config::GameCfg::spad_width),
-                                static_cast<T>(Config::GameCfg::lpad_width), x0_T, v0_T, a0_T);
+                game_sim.set_config(static_cast<T>(this->cfg_width_), static_cast<T>(this->cfg_height_),
+                                    static_cast<T>(Config::GameCfg::pad_y1), static_cast<T>(Config::GameCfg::terrain_y),
+                                    static_cast<T>(Config::GameCfg::max_vx), static_cast<T>(Config::GameCfg::max_vy),
+                                    static_cast<T>(Config::PlanetCfg::g), static_cast<T>(Config::PlanetCfg::mu_x),
+                                    static_cast<T>(Config::PlanetCfg::mu_y), static_cast<T>(Config::LanderCfg::width),
+                                    static_cast<T>(Config::LanderCfg::height),
+                                    static_cast<T>(Config::LanderCfg::max_fuel),
+                                    static_cast<T>(this->game_cfg_spad_width_),
+                                    static_cast<T>(this->game_cfg_lpad_width_), x0_T, v0_T, a0_T);
 
-            game_sim.reset(static_cast<T>(layout_info.spad_x1), static_cast<T>(layout_info.lpad_x1));
+                game_sim.reset(static_cast<T>(layout_info.spad_x1), static_cast<T>(layout_info.lpad_x1));
 
-            game_sim.get_state(state_buffer.data(), state_buffer.size());
-            bool done                              = false;
-            double accumulated_step_penalty_layout = 0.0;
-            int steps_this_layout                  = 0;
+                game_sim.get_state(state_buffer_local.data(), state_buffer_local.size());
+                bool done_local                              = false;
+                double accumulated_step_penalty_layout_local = 0.0;
+                int steps_this_layout_local                  = 0;
 
-            while (steps_this_layout < game_cfg_max_steps_)
-            {
-                size_t action_idx = net_->feedforward(state_buffer.data(), state_buffer.size(), member_id);
+                while (steps_this_layout_local < this->game_cfg_max_steps_)
+                {
+                    size_t action_idx =
+                        this->net_->feedforward(state_buffer_local.data(), state_buffer_local.size(), member_id);
 
-                done = game_sim.update(static_cast<int>(action_idx), state_buffer.data(), state_buffer.size());
+                    done_local = game_sim.update(static_cast<int>(action_idx), state_buffer_local.data(),
+                                                 state_buffer_local.size());
 
-                accumulated_step_penalty_layout +=
-                    static_cast<double>(game_sim.calculate_step_penalty(static_cast<int>(action_idx)));
-                steps_this_layout++;
-                if (done) { break; }
-            }
-            double terminal_penalty_layout =
-                static_cast<double>(game_sim.calculate_terminal_penalty(steps_this_layout));
-            double fitness_for_layout = accumulated_step_penalty_layout + terminal_penalty_layout;
+                    accumulated_step_penalty_layout_local +=
+                        static_cast<double>(game_sim.calculate_step_penalty(static_cast<int>(action_idx)));
+                    steps_this_layout_local++;
+                    if (done_local) { break; }
+                }
+                double terminal_penalty_layout_local =
+                    static_cast<double>(game_sim.calculate_terminal_penalty(steps_this_layout_local));
+                double fitness_for_layout = accumulated_step_penalty_layout_local + terminal_penalty_layout_local;
 
-            total_fitness_for_member += fitness_for_layout;
-            total_steps_for_member += static_cast<double>(steps_this_layout);
-        }
-        fitness_scores[member_id]   = total_fitness_for_member;
-        all_member_steps[member_id] = total_steps_for_member;
-    }
+                // Accumulate fitness and steps for this member from this layout
+                // This is safe because each task updates a unique fitness_scores[member_id] /
+                // all_member_steps[member_id] for the current layout, and pool.wait_for_tasks() synchronizes before the
+                // next layout.
+                fitness_scores[member_id] += fitness_for_layout;
+                all_member_steps[member_id] += static_cast<double>(steps_this_layout_local);
+            };
+
+            if (this->multithread_) { pool.push_task(sim_task); }
+            else { sim_task(); }
+        } // End of population loop
+
+        if (this->multithread_) { pool.wait_for_tasks(); } // Wait for all members to finish for the current layout
+    } // End of layouts loop
 }
 
 // Explicit template instantiation
