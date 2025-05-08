@@ -450,29 +450,36 @@ void Training::NNEngineTrainer<T>::train_generation(
     std::transform(Config::GameCfg::a0.begin(), Config::GameCfg::a0.end(), a0_T.begin(),
                    [](double val) { return static_cast<T>(val); });
 
-    tp::thread_pool pool;
+    tp::thread_pool pool; // Thread pool for managing simulation tasks
 
-    for (const auto& layout_info : layouts)
+    // Outer loop: Iterate over each member of the population
+    for (size_t member_id = 0; member_id < population_size; ++member_id)
     {
-        for (size_t member_id = 0; member_id < population_size; ++member_id)
-        {
-            auto sim_task = [this, &layout_info, member_id, &fitness_scores, &all_member_steps, &x0_T, &v0_T, &a0_T]() {
-                std::vector<T> state_buffer_local(5); // 5 state variables for the lander, local to task
-                GameLogicCpp<T> game_sim(true);       // true for no_print_flag, local to task
+        // Define a simulation task for the current member
+        auto sim_task = [this, member_id, &layouts, &fitness_scores, &all_member_steps, &x0_T, &v0_T, &a0_T]() {
+            // Initialize GameLogic and state buffer once per member task
+            std::vector<T> state_buffer_local(5); // 5 state variables for the lander
+            GameLogicCpp<T> game_sim(true);       // true for no_print_flag
 
-                game_sim.set_config(static_cast<T>(this->cfg_width_), static_cast<T>(this->cfg_height_),
-                                    static_cast<T>(Config::GameCfg::pad_y1), static_cast<T>(Config::GameCfg::terrain_y),
-                                    static_cast<T>(Config::GameCfg::max_vx), static_cast<T>(Config::GameCfg::max_vy),
-                                    static_cast<T>(Config::PlanetCfg::g), static_cast<T>(Config::PlanetCfg::mu_x),
-                                    static_cast<T>(Config::PlanetCfg::mu_y), static_cast<T>(Config::LanderCfg::width),
-                                    static_cast<T>(Config::LanderCfg::height),
-                                    static_cast<T>(Config::LanderCfg::max_fuel),
-                                    static_cast<T>(this->game_cfg_spad_width_),
-                                    static_cast<T>(this->game_cfg_lpad_width_), x0_T, v0_T, a0_T);
+            // Configure the game simulation for this member
+            game_sim.set_config(static_cast<T>(this->cfg_width_), static_cast<T>(this->cfg_height_),
+                                static_cast<T>(Config::GameCfg::pad_y1), static_cast<T>(Config::GameCfg::terrain_y),
+                                static_cast<T>(Config::GameCfg::max_vx), static_cast<T>(Config::GameCfg::max_vy),
+                                static_cast<T>(Config::PlanetCfg::g), static_cast<T>(Config::PlanetCfg::mu_x),
+                                static_cast<T>(Config::PlanetCfg::mu_y), static_cast<T>(Config::LanderCfg::width),
+                                static_cast<T>(Config::LanderCfg::height), static_cast<T>(Config::LanderCfg::max_fuel),
+                                static_cast<T>(this->game_cfg_spad_width_), static_cast<T>(this->game_cfg_lpad_width_),
+                                x0_T, v0_T, a0_T);
 
+            double total_fitness_for_member = 0.0;
+            double total_steps_for_member   = 0.0;
+
+            // Inner loop: Iterate over each layout for the current member
+            for (const auto& layout_info : layouts)
+            {
                 game_sim.reset(static_cast<T>(layout_info.spad_x1), static_cast<T>(layout_info.lpad_x1));
-
                 game_sim.get_state(state_buffer_local.data(), state_buffer_local.size());
+
                 bool done_local                              = false;
                 double accumulated_step_penalty_layout_local = 0.0;
                 int steps_this_layout_local                  = 0;
@@ -489,25 +496,28 @@ void Training::NNEngineTrainer<T>::train_generation(
                         static_cast<double>(game_sim.calculate_step_penalty(static_cast<int>(action_idx)));
                     steps_this_layout_local++;
                     if (done_local) { break; }
-                }
+                } // End of simulation steps loop for one layout
+
                 double terminal_penalty_layout_local =
                     static_cast<double>(game_sim.calculate_terminal_penalty(steps_this_layout_local));
                 double fitness_for_layout = accumulated_step_penalty_layout_local + terminal_penalty_layout_local;
 
-                // Accumulate fitness and steps for this member from this layout
-                // This is safe because each task updates a unique fitness_scores[member_id] /
-                // all_member_steps[member_id] for the current layout, and pool.wait_for_tasks() synchronizes before the
-                // next layout.
-                fitness_scores[member_id] += fitness_for_layout;
-                all_member_steps[member_id] += static_cast<double>(steps_this_layout_local);
-            };
+                total_fitness_for_member += fitness_for_layout;
+                total_steps_for_member += static_cast<double>(steps_this_layout_local);
+            } // End of layouts loop for one member
 
-            if (this->multithread_) { pool.push_task(sim_task); }
-            else { sim_task(); }
-        } // End of population loop
+            // Store the accumulated fitness and steps for this member
+            // This is thread-safe as each task writes to a unique member_id index.
+            fitness_scores[member_id]   = total_fitness_for_member;
+            all_member_steps[member_id] = total_steps_for_member;
+        }; // End of sim_task lambda
 
-        if (this->multithread_) { pool.wait_for_tasks(); } // Wait for all members to finish for the current layout
-    } // End of layouts loop
+        if (this->multithread_) { pool.push_task(sim_task); }
+        else { sim_task(); } // Execute synchronously if multithreading is disabled
+    } // End of population (member_id) loop
+
+    // Wait for all member tasks to complete if multithreading is enabled
+    if (this->multithread_) { pool.wait_for_tasks(); }
 }
 
 // Explicit template instantiation
