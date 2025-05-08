@@ -441,11 +441,14 @@ void Training::NNEngineTrainer<T>::train_generation(
 
     // Prepare config vectors once
     std::vector<T> x0_T(Config::GameCfg::x0.size());
-    std::copy(Config::GameCfg::x0.begin(), Config::GameCfg::x0.end(), x0_T.begin());
+    std::transform(Config::GameCfg::x0.begin(), Config::GameCfg::x0.end(), x0_T.begin(),
+                   [](double val) { return static_cast<T>(val); });
     std::vector<T> v0_T(Config::GameCfg::v0.size());
-    std::copy(Config::GameCfg::v0.begin(), Config::GameCfg::v0.end(), v0_T.begin());
+    std::transform(Config::GameCfg::v0.begin(), Config::GameCfg::v0.end(), v0_T.begin(),
+                   [](double val) { return static_cast<T>(val); });
     std::vector<T> a0_T(Config::GameCfg::a0.size());
-    std::copy(Config::GameCfg::a0.begin(), Config::GameCfg::a0.end(), a0_T.begin());
+    std::transform(Config::GameCfg::a0.begin(), Config::GameCfg::a0.end(), a0_T.begin(),
+                   [](double val) { return static_cast<T>(val); });
 
     tp::thread_pool pool;
 

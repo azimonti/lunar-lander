@@ -53,12 +53,12 @@ int main(int argc, char* argv[])
                     checkpoint_to_load     = oss.str();
                     // If --step is provided, we imply --continue
                     continue_training_flag = true;
-                } catch (const std::invalid_argument& ia)
+                } catch (const std::invalid_argument& /*ia*/)
                 {
                     std::cerr << "Error: Invalid argument for --step: " << argv[i] << " is not a valid integer."
                               << std::endl;
                     return 1;
-                } catch (const std::out_of_range& oor)
+                } catch (const std::out_of_range& /*oor*/)
                 {
                     std::cerr << "Error: Argument for --step out of range: " << argv[i] << std::endl;
                     return 1;
