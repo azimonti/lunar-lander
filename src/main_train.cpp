@@ -1,7 +1,7 @@
 /********************/
 /*  main_train.cpp  */
-/*   Version 1.0    */
-/*    2023/05/08    */
+/*   Version 1.1    */
+/*    2023/05/10    */
 /********************/
 #include <iomanip>
 #include <iostream>
@@ -23,18 +23,17 @@ int main(int argc, char* argv[])
     // Determine the type based on configuration
 #if defined(USE_FLOAT)
     using TDataType = float;
-    if (!Config::NNConfig::use_float)
+    if (!Config::getBool("NNConfig.use_float", false)) // Default to false if key not found
     {
-        std::cout << "Warning: Makefile defines USE_FLOAT, but config nn_config.use_float is False. Using float."
+        std::cout << "Warning: Makefile defines USE_FLOAT, but config NNConfig.use_float is False. Using float."
                   << std::endl;
     }
 #else
     using TDataType = double;
-    if (Config::NNConfig::use_float)
+    if (Config::getBool("NNConfig.use_float", false)) // Default to false if key not found
     {
-        std::cout
-            << "Warning: Makefile does not define USE_FLOAT, but config nn_config.use_float is True. Using double."
-            << std::endl;
+        std::cout << "Warning: Makefile does not define USE_FLOAT, but config NNConfig.use_float is True. Using double."
+                  << std::endl;
     }
 #endif
 

@@ -110,6 +110,7 @@ nn_config = SimpleNamespace(
     save_interval=25,       # save every n generations
     epochs=1000,            # number of training epochs
     layout_nb=50,           # number of multiple layout
+    reset_period=10,        # number of generation where 0 is the best
     left_right_ratio=0.5,   # ratio of left vs right layout
     multithread=True,       # use thread pool
     verbose=False

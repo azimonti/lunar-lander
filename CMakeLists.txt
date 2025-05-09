@@ -40,11 +40,12 @@ endif()
 find_package(Python COMPONENTS Interpreter Development REQUIRED)
 find_package(pybind11 REQUIRED)
 
-include_directories("${CMAKE_CURRENT_SOURCE_DIR}/src"                                     )
-include_directories("${CMAKE_CURRENT_SOURCE_DIR}/externals/ma-libs/cpp"                   )
-include_directories("${CMAKE_CURRENT_SOURCE_DIR}/externals/ma-libs/cpp/libnn/src"         )
-include_directories("${CMAKE_CURRENT_SOURCE_DIR}/externals/ma-libs/cpp/utils"             )
-link_directories("${CMAKE_CURRENT_SOURCE_DIR}/externals/ma-libs/build/${CMAKE_BUILD_TYPE}")
+include_directories("${CMAKE_CURRENT_SOURCE_DIR}/src"                                        )
+include_directories("${CMAKE_CURRENT_SOURCE_DIR}/externals/ma-libs/cpp"                      )
+include_directories("${CMAKE_CURRENT_SOURCE_DIR}/externals/ma-libs/cpp/libnn/src"            )
+include_directories("${CMAKE_CURRENT_SOURCE_DIR}/externals/ma-libs/cpp/libconfig_loader/src" )
+include_directories("${CMAKE_CURRENT_SOURCE_DIR}/externals/ma-libs/cpp/utils"                )
+link_directories("${CMAKE_CURRENT_SOURCE_DIR}/externals/ma-libs/build/${CMAKE_BUILD_TYPE}"   )
 
 # --- Build the static library ---
 add_library(game_logic_cpp STATIC
@@ -77,9 +78,8 @@ endif()
 add_executable(main_train_d
     src/main_train.cpp
     src/nn_engine_trainer.cpp
-    src/config_loader.cpp
 )
-target_link_libraries(main_train_d PRIVATE game_logic_cpp debug cpp_nn2staticd optimized cpp_nn2static)
+target_link_libraries(main_train_d PRIVATE game_logic_cpp debug cpp_nn2staticd optimized cpp_nn2static debug config_loaderd optimized config_loader)
 set_target_properties(   main_train_d   PROPERTIES DEBUG_POSTFIX "d"               )
 if(UNITYBUILD)
   set_target_properties( main_train_d PROPERTIES UNITY_BUILD ON                    )
@@ -88,9 +88,8 @@ endif()
 add_executable(main_train_f
     src/main_train.cpp
     src/nn_engine_trainer.cpp
-    src/config_loader.cpp
 )
-target_link_libraries(main_train_f PRIVATE game_logic_cpp debug cpp_nn2staticd optimized cpp_nn2static)
+target_link_libraries(main_train_f PRIVATE game_logic_cpp debug cpp_nn2staticd optimized cpp_nn2static debug config_loaderd optimized config_loader)
 target_compile_definitions( main_train_f PRIVATE USE_FLOAT                         )
 set_target_properties(   main_train_f   PROPERTIES DEBUG_POSTFIX "d"               )
 if(UNITYBUILD)

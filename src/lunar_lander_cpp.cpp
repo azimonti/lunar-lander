@@ -5,11 +5,11 @@
 /************************/
 
 #include <pybind11/numpy.h>
-#include <pybind11/operators.h> // For optional
+#include <pybind11/operators.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include "game_logic.h"
-#include "game_utils.h" // Added for pad generation
+#include "game_utils.h"
 
 namespace py = pybind11;
 

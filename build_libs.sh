@@ -40,7 +40,7 @@ echo "Activating the virtual environment..."
 source "${MYVENV}/${SCRIPTDIR}/activate"
 
 cd externals/ma-libs
-./cbuild.sh --build-type "${BUILD_TYPE}" --cmake-params "-DCPP_LIBNN=ON -DPYTHON_LIBNN=ON"
+./cbuild.sh --build-type "${BUILD_TYPE}" --cmake-params "-DCPP_LIBNN=ON -DPYTHON_LIBNN=ON -DCPP_LIBCONFIG_LOADER=ON"
 
 cd ../.. # Go back to project root to ensure consistent paths
 mkdir -p externals/ma-libs/build/lunar_lander_cpp/"${BUILD_TYPE}"
