@@ -37,10 +37,6 @@ class NeuralNetwork():
         self._nGen = self._net.GetEpochs()
         self._start_time = time.time()  # Reset start time on load
         self._nnsize = self._net.GetNetworkSize()
-        if nn_config.verbose:
-            print(f"Loading network from: {full_path} "
-                  f"(Generation {self._nGen})")
-            print(f"  Expected network structure: {self._nnsize}")
 
     def get_action(self, current_state: np.ndarray) -> int:
         """Gets the action from the NN based on the current state."""

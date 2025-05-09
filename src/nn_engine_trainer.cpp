@@ -86,7 +86,7 @@ template <typename T> bool Training::NNEngineTrainer<T>::init()
     net_->SetName(nn_name_.c_str());
 
     net_->SetPopulationStrategy(nn::PopulationStrategy::MIXED_WITH_RANDOM_INJECTION, 0.30); // 30% random injection
-    net_->CreatePopulation(true); // Initial population creation
+    net_->CreatePopulation(elitism_config_); // Initial population creation
 
     current_generation_ = 0;
     overall_start_time_ = std::chrono::steady_clock::now();
@@ -162,13 +162,6 @@ template <typename T> bool Training::NNEngineTrainer<T>::save()
 
     try
     {
-        if (std::filesystem::exists(full_path_numbered) && !overwrite_save_)
-        { // Only remove if not overwriting and it's a numbered save
-          // This logic might be tricky: if overwrite_save_ is false, we generate unique names.
-          // If overwrite_save_ is true, filename_numbered is always "_latest_overwrite.txt"
-          // The python code removes full_path if it exists before serializing. Let's mimic that for the numbered
-          // file.
-        }
         if (std::filesystem::exists(full_path_numbered)) { std::filesystem::remove(full_path_numbered); }
 
         net_->Serialize(full_path_numbered.string());
@@ -261,7 +254,7 @@ template <typename T> void Training::NNEngineTrainer<T>::train()
 
     std::cout << "Starting C++ training for " << epochs_ << " generations..." << std::endl;
     std::cout << "Population size: " << net_->GetPopSize() << ", Top performers: " << net_->GetTopPerformersSize()
-              << std::endl;
+              << ", Elitism: " << elitism_config_ << std::endl;
     std::cout << "Network structure: ";
     // Use nn_size_config_ as it's updated in load() after deserialization
     // to reflect the actual loaded network size.
@@ -379,7 +372,7 @@ template <typename T> void Training::NNEngineTrainer<T>::train()
         }
 
         net_->UpdateWeightsAndBiases(sorted_indices);
-        net_->CreatePopulation(true);
+        net_->CreatePopulation(elitism_config_);
         net_->UpdateEpochs(1);
         current_generation_     = static_cast<int>(net_->GetEpochs());
 
@@ -518,7 +511,7 @@ void Training::NNEngineTrainer<T>::train_generation(
                 }
             } // End of layouts loop for one member
 
-            const double PENALTY_FOR_ZERO_SUCCESS_IN_DIRECTION = 50000.0;  // Increased penalty
+            const double PENALTY_FOR_ZERO_SUCCESS_IN_DIRECTION = 150000.0; // Increased penalty
             const double MAX_EXPECTED_PENALTY_NO_LAYOUTS       = 100000.0; // Fallback if a direction has no layouts
 
             double avg_penalty_ltr                             = MAX_EXPECTED_PENALTY_NO_LAYOUTS;
@@ -541,9 +534,13 @@ void Training::NNEngineTrainer<T>::train_generation(
                 }
             }
 
-            double primary_fitness          = std::max(avg_penalty_ltr, avg_penalty_rtl);
+            double primary_fitness              = std::max(avg_penalty_ltr, avg_penalty_rtl);
+            const double BALANCE_PENALTY_FACTOR = 0.5; // Tune this factor
 
-            const double DUAL_LANDING_BONUS = 25000.0; // Increased bonus
+            // Add penalty for imbalance
+            primary_fitness += BALANCE_PENALTY_FACTOR * std::abs(avg_penalty_ltr - avg_penalty_rtl);
+
+            const double DUAL_LANDING_BONUS = 75000.0; // Increased bonus
             if (successful_landings_ltr > 0 && successful_landings_rtl > 0)
             {
                 primary_fitness -= DUAL_LANDING_BONUS; // Lower penalty is better
