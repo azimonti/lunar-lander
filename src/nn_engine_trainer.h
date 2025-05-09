@@ -29,7 +29,7 @@ namespace Training
     template <typename T> class NNEngineTrainer
     {
       public:
-        NNEngineTrainer(bool verbose_override = false);
+        NNEngineTrainer();
         ~NNEngineTrainer() = default;
 
         bool init();
@@ -57,8 +57,6 @@ namespace Training
         std::chrono::steady_clock::time_point overall_start_time_;
         std::mt19937 random_generator_; // For layout generation or other internal random needs
 
-        // Cached config values from Config:: namespace
-        bool verbose_flag_;
         std::string nn_name_;
         std::string save_path_nn_;
         bool save_nn_flag_;
@@ -73,7 +71,6 @@ namespace Training
         int top_individuals_config_;
         int activation_id_config_;
         bool elitism_config_;
-        bool mixed_population_config_;
         bool multithread_;
         std::vector<size_t> nn_size_config_;
 
@@ -83,6 +80,11 @@ namespace Training
         double game_cfg_spad_width_;
         double game_cfg_lpad_width_;
         int game_cfg_max_steps_;
+
+        // For layout reset on stagnation
+        int reset_period_config_;
+        int generations_stagnated_;
+        double last_best_fitness_overall_;
     };
 
 } // namespace Training

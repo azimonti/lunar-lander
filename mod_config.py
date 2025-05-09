@@ -101,7 +101,6 @@ nn_config = SimpleNamespace(
     seed=5247,              # seed
     top_individuals=10,     # number of top individuals to be selected
     population_size=100,    # population size
-    mixed_population=True,  # use mixed population
     elitism=True,           # keep the best individual as-is
     activation_id=1,        # SIGMOID=0, TANH=1
     save_nn=True,           # save
@@ -112,8 +111,7 @@ nn_config = SimpleNamespace(
     layout_nb=50,           # number of multiple layout
     reset_period=10,        # number of generation where 0 is the best
     left_right_ratio=0.5,   # ratio of left vs right layout
-    multithread=True,       # use thread pool
-    verbose=False
+    multithread=True        # use thread pool
 )
 
 

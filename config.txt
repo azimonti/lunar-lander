@@ -1,5 +1,5 @@
 # Lunar Lander Configuration File
-# Version 2.1 - Generated on 2025/05/09
+# Version 2.1 - Generated on 2025/05/10
 
 LanderCfg.width = 65.5
 LanderCfg.height = 54.2
@@ -35,7 +35,6 @@ NNConfig.use_float = false
 NNConfig.seed = 5247
 NNConfig.top_individuals = 10
 NNConfig.population_size = 100
-NNConfig.mixed_population = true
 NNConfig.elitism = true
 NNConfig.activation_id = 1
 NNConfig.save_nn = true
@@ -47,4 +46,3 @@ NNConfig.layout_nb = 50
 NNConfig.reset_period = 10
 NNConfig.left_right_ratio = 0.5
 NNConfig.multithread = true
-NNConfig.verbose = false

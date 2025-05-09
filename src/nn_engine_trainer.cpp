@@ -1,7 +1,7 @@
 /*************************/
 /* nn_engine_trainer.cpp */
-/*      Version 1.0      */
-/*       2023/05/08      */
+/*      Version 1.1      */
+/*       2023/05/10      */
 /*************************/
 
 #include <algorithm>
@@ -18,42 +18,45 @@
 #include <string>
 #include <vector>
 #include "thread/thread_pool.hpp"
-#include "config_loader.h" // Changed from config_cpp.h
+#include "config_loader.h"
 #include "game_logic.h"
 #include "game_utils.h"
 #include "nn_engine_trainer.h"
 
-template <typename T>
-Training::NNEngineTrainer<T>::NNEngineTrainer(bool verbose_override)
-    : current_generation_(0), verbose_flag_(verbose_override || Config::NNConfig::verbose)
+template <typename T> Training::NNEngineTrainer<T>::NNEngineTrainer() : current_generation_(0)
 {
     // Cache configuration values
-    nn_name_                 = Config::NNConfig::name;
-    save_path_nn_            = Config::NNConfig::save_path_nn;
-    save_nn_flag_            = Config::NNConfig::save_nn;
-    overwrite_save_          = Config::NNConfig::overwrite;
-    save_interval_           = Config::NNConfig::save_interval;
-    epochs_                  = Config::NNConfig::epochs;
-    layout_nb_               = Config::NNConfig::layout_nb;
-    left_right_ratio_        = Config::NNConfig::left_right_ratio;
+    nn_name_                = Config::getString("NNConfig.name", "default_nn");
+    save_path_nn_           = Config::getString("NNConfig.save_path_nn", "data/nn_models/");
+    save_nn_flag_           = Config::getBool("NNConfig.save_nn", true);
+    overwrite_save_         = Config::getBool("NNConfig.overwrite", false);
+    save_interval_          = Config::getInt("NNConfig.save_interval", 10);
+    epochs_                 = Config::getInt("NNConfig.epochs", 100);
+    layout_nb_              = Config::getInt("NNConfig.layout_nb", 10);
+    left_right_ratio_       = Config::getDouble("NNConfig.left_right_ratio", 0.5);
 
-    nn_seed_                 = Config::NNConfig::seed;
-    population_size_config_  = Config::NNConfig::population_size;
-    top_individuals_config_  = Config::NNConfig::top_individuals;
-    activation_id_config_    = Config::NNConfig::activation_id;
-    elitism_config_          = Config::NNConfig::elitism;
-    mixed_population_config_ = Config::NNConfig::mixed_population;
-    multithread_             = Config::NNConfig::multithread;
+    nn_seed_                = Config::getInt("NNConfig.seed", 0);
+    population_size_config_ = Config::getInt("NNConfig.population_size", 100);
+    top_individuals_config_ = Config::getInt("NNConfig.top_individuals", 10);
+    activation_id_config_   = Config::getInt("NNConfig.activation_id", 0);
+    elitism_config_         = Config::getBool("NNConfig.elitism", true);
+    multithread_            = Config::getBool("NNConfig.multithread", true);
 
     nn_size_config_.push_back(5); // Input layer: 5 state variables
-    for (int h_size : Config::NNConfig::hlayers) { nn_size_config_.push_back(static_cast<size_t>(h_size)); }
+    std::vector<int> hlayers_vec = Config::getVectorInt("NNConfig.hlayers");
+    for (int h_size : hlayers_vec) { nn_size_config_.push_back(static_cast<size_t>(h_size)); }
     nn_size_config_.push_back(4); // Output layer: 4 actions
 
-    cfg_width_           = Config::Cfg::width;
-    cfg_height_          = Config::Cfg::height;
-    game_cfg_spad_width_ = Config::GameCfg::spad_width;
-    game_cfg_lpad_width_ = Config::GameCfg::lpad_width;
-    game_cfg_max_steps_  = Config::GameCfg::max_steps;
+    cfg_width_                 = Config::getDouble("Cfg.width", 800.0);
+    cfg_height_                = Config::getDouble("Cfg.height", 600.0);
+    game_cfg_spad_width_       = Config::getDouble("GameCfg.spad_width", 100.0);
+    game_cfg_lpad_width_       = Config::getDouble("GameCfg.lpad_width", 100.0);
+    game_cfg_max_steps_        = Config::getInt("GameCfg.max_steps", 1000);
+
+    // Initialize stagnation tracking variables
+    reset_period_config_       = Config::getInt("NNConfig.reset_period", 100000); // Default to a high value
+    generations_stagnated_     = 0;
+    last_best_fitness_overall_ = std::numeric_limits<double>::max();
 
     random_generator_.seed(static_cast<unsigned int>(nn_seed_));
 }
@@ -81,23 +84,13 @@ template <typename T> bool Training::NNEngineTrainer<T>::init()
                                                static_cast<size_t>(elitism_config_));
 
     net_->SetName(nn_name_.c_str());
-    net_->SetMixed(mixed_population_config_);
-    net_->CreatePopulation(true);
+
+    net_->SetPopulationStrategy(nn::PopulationStrategy::MIXED_WITH_RANDOM_INJECTION, 0.30); // 30% random injection
+    net_->CreatePopulation(true); // Initial population creation
 
     current_generation_ = 0;
     overall_start_time_ = std::chrono::steady_clock::now();
-    if (verbose_flag_)
-    {
-        std::cout << "NNEngineTrainer initialized." << std::endl;
-        std::cout << "  Network Name: " << nn_name_ << std::endl;
-        std::cout << "  Save Path: " << save_path_nn_ << std::endl;
-        std::cout << "  NN Structure: ";
-        for (size_t i = 0; i < nn_size_config_.size(); ++i)
-        {
-            std::cout << nn_size_config_[i] << (i == nn_size_config_.size() - 1 ? "" : "-");
-        }
-        std::cout << std::endl;
-    }
+
     return true;
 }
 
@@ -129,17 +122,7 @@ template <typename T> bool Training::NNEngineTrainer<T>::load(const std::string&
         current_generation_ = static_cast<int>(net_->GetEpochs());
         nn_size_config_     = net_->GetNetworkSize();           // Update size from loaded net
         overall_start_time_ = std::chrono::steady_clock::now(); // Reset timer
-        if (verbose_flag_)
-        {
-            std::cout << "Network loaded from: " << full_path.string() << " (Generation " << current_generation_ << ")"
-                      << std::endl;
-            std::cout << "  Network structure from file: ";
-            for (size_t i = 0; i < nn_size_config_.size(); ++i)
-            {
-                std::cout << nn_size_config_[i] << (i == nn_size_config_.size() - 1 ? "" : "-");
-            }
-            std::cout << std::endl;
-        }
+
         return true;
     } catch (const std::exception& e)
     {
@@ -189,12 +172,10 @@ template <typename T> bool Training::NNEngineTrainer<T>::save()
         if (std::filesystem::exists(full_path_numbered)) { std::filesystem::remove(full_path_numbered); }
 
         net_->Serialize(full_path_numbered.string());
-        if (verbose_flag_) { std::cout << "Network serialized to: " << full_path_numbered.string() << std::endl; }
 
         if (std::filesystem::exists(full_path_last)) { std::filesystem::remove(full_path_last); }
         std::filesystem::copy_file(full_path_numbered, full_path_last,
                                    std::filesystem::copy_options::overwrite_existing);
-        if (verbose_flag_) { std::cout << "Copied network state to: " << full_path_last.string() << std::endl; }
         return true;
     } catch (const std::exception& e)
     {
@@ -217,15 +198,7 @@ template <typename T>
 void Training::NNEngineTrainer<T>::balance_layouts(std::vector<LayoutInfo>& layouts_vec, int num_layouts_to_balance,
                                                    double target_ltr_ratio)
 {
-    if (target_ltr_ratio < 0.0 || target_ltr_ratio > 1.0)
-    {
-        if (verbose_flag_)
-        {
-            std::cout << "  Warning: Invalid left_right_ratio (" << target_ltr_ratio << "). Defaulting to 0.5."
-                      << std::endl;
-        }
-        target_ltr_ratio = 0.5;
-    }
+    if (target_ltr_ratio < 0.0 || target_ltr_ratio > 1.0) { target_ltr_ratio = 0.5; }
 
     int current_ltr_count = 0;
     for (const auto& layout : layouts_vec)
@@ -237,25 +210,9 @@ void Training::NNEngineTrainer<T>::balance_layouts(std::vector<LayoutInfo>& layo
         static_cast<int>(std::round(static_cast<double>(num_layouts_to_balance) * target_ltr_ratio));
     int num_to_flip = std::abs(current_ltr_count - target_ltr_count_rounded);
 
-    if (num_to_flip == 0)
-    {
-        if (verbose_flag_)
-        {
-            std::cout << "Layouts already meet target ratio (" << target_ltr_ratio << "): " << current_ltr_count
-                      << " left-to-right, " << (num_layouts_to_balance - current_ltr_count) << " right-to-left."
-                      << std::endl;
-        }
-        return;
-    }
+    if (num_to_flip == 0) { return; }
 
-    bool flip_ltr_to_rtl = current_ltr_count > target_ltr_count_rounded;
-    if (verbose_flag_)
-    {
-        std::cout << "  Balancing (Ratio " << target_ltr_ratio << "): Flipping " << num_to_flip
-                  << (flip_ltr_to_rtl ? " left-to-right" : " right-to-left") << " layouts to reach target "
-                  << target_ltr_count_rounded << "." << std::endl;
-    }
-
+    bool flip_ltr_to_rtl   = current_ltr_count > target_ltr_count_rounded;
     double screen_center_x = cfg_width_ / 2.0;
     int flipped_count      = 0;
 
@@ -265,8 +222,6 @@ void Training::NNEngineTrainer<T>::balance_layouts(std::vector<LayoutInfo>& layo
         if ((flip_ltr_to_rtl && is_ltr) || (!flip_ltr_to_rtl && !is_ltr))
         {
             // This layout is a candidate for flipping
-            double old_spad_x1        = static_cast<double>(layouts_vec[static_cast<size_t>(i)].spad_x1);
-            double old_lpad_x1        = static_cast<double>(layouts_vec[static_cast<size_t>(i)].lpad_x1);
             double old_spad_center    = layouts_vec[static_cast<size_t>(i)].spad_center;
             double old_lpad_center    = layouts_vec[static_cast<size_t>(i)].lpad_center;
 
@@ -285,14 +240,6 @@ void Training::NNEngineTrainer<T>::balance_layouts(std::vector<LayoutInfo>& layo
             layouts_vec[static_cast<size_t>(i)].spad_center = new_spad_center; // Update cached center
             layouts_vec[static_cast<size_t>(i)].lpad_center = new_lpad_center; // Update cached center
 
-            if (verbose_flag_)
-            {
-                std::cout << "    Flipped layout " << i + 1 << ": "
-                          << "Old Start=" << std::fixed << std::setprecision(1) << old_spad_x1
-                          << ", Old Landing=" << old_lpad_x1 << " -> "
-                          << "New Start=" << layouts_vec[static_cast<size_t>(i)].spad_x1
-                          << ", New Landing=" << layouts_vec[static_cast<size_t>(i)].lpad_x1 << std::endl;
-            }
             flipped_count++;
         }
     }
@@ -301,14 +248,6 @@ void Training::NNEngineTrainer<T>::balance_layouts(std::vector<LayoutInfo>& layo
     for (const auto& layout : layouts_vec)
     {
         if (layout.spad_center < layout.lpad_center) { current_ltr_count++; }
-    }
-    if (verbose_flag_)
-    {
-        double final_ratio =
-            num_layouts_to_balance > 0 ? static_cast<double>(current_ltr_count) / num_layouts_to_balance : 0.0;
-        std::cout << "Layouts after ratio balancing: " << current_ltr_count << " left-to-right (" << std::fixed
-                  << std::setprecision(1) << (final_ratio * 100.0) << "%), "
-                  << (num_layouts_to_balance - current_ltr_count) << " right-to-left." << std::endl;
     }
 }
 
@@ -324,7 +263,9 @@ template <typename T> void Training::NNEngineTrainer<T>::train()
     std::cout << "Population size: " << net_->GetPopSize() << ", Top performers: " << net_->GetTopPerformersSize()
               << std::endl;
     std::cout << "Network structure: ";
-    const auto& current_nn_size = net_->GetNetworkSize();
+    // Use nn_size_config_ as it's updated in load() after deserialization
+    // to reflect the actual loaded network size.
+    const auto& current_nn_size = nn_size_config_;
     for (size_t i = 0; i < current_nn_size.size(); ++i)
     {
         std::cout << current_nn_size[i] << (i == current_nn_size.size() - 1 ? "" : "-");
@@ -333,10 +274,9 @@ template <typename T> void Training::NNEngineTrainer<T>::train()
 
     std::vector<LayoutInfo> layouts_vec;
     layouts_vec.reserve(static_cast<size_t>(layout_nb_));
-    int initial_left_to_right_count = 0;
+    [[maybe_unused]] int initial_left_to_right_count = 0;
 
-    if (verbose_flag_) { std::cout << "Generating " << layout_nb_ << " layouts for training..." << std::endl; }
-    unsigned int base_seed_for_layouts = static_cast<unsigned int>(nn_seed_); // Or use a different seed source
+    unsigned int base_seed_for_layouts               = static_cast<unsigned int>(nn_seed_);
 
     for (int i = 0; i < layout_nb_; ++i)
     {
@@ -353,16 +293,6 @@ template <typename T> void Training::NNEngineTrainer<T>::train()
         layouts_vec.push_back(layout_item);
 
         if (layout_item.spad_center < layout_item.lpad_center) { initial_left_to_right_count++; }
-        if (verbose_flag_)
-        {
-            std::cout << "  Layout " << i + 1 << ": Start=" << pad_pos.first << ", Landing=" << pad_pos.second
-                      << std::endl;
-        }
-    }
-    if (verbose_flag_)
-    {
-        std::cout << "Initial layouts: " << initial_left_to_right_count << " left-to-right, "
-                  << (layout_nb_ - initial_left_to_right_count) << " right-to-left." << std::endl;
     }
 
     balance_layouts(layouts_vec, layout_nb_, left_right_ratio_);
@@ -384,6 +314,38 @@ template <typename T> void Training::NNEngineTrainer<T>::train()
         auto gen_start_time    = std::chrono::steady_clock::now();
         int actual_gen_display = current_generation_ + 1;
 
+        // Check for layout reset condition BEFORE train_generation for this epoch
+        if (generations_stagnated_ >= reset_period_config_)
+        {
+            std::cout << "--- Stagnation detected. Resetting training layouts after " << generations_stagnated_
+                      << " generations. --- " << std::endl;
+
+            layouts_vec.clear();
+            [[maybe_unused]] int initial_ltr_count_after_reset = 0;
+            // Use a different seed base for new layouts to ensure variety
+            unsigned int layout_reset_seed_base =
+                static_cast<unsigned int>(nn_seed_ + current_generation_ + gen_offset);
+
+            for (int i = 0; i < layout_nb_; ++i)
+            {
+                std::optional<int> layout_seed_opt =
+                    static_cast<int>(layout_reset_seed_base + static_cast<unsigned int>(i));
+                auto pad_pos = generate_random_pad_positions(cfg_width_, static_cast<int>(game_cfg_spad_width_),
+                                                             static_cast<int>(game_cfg_lpad_width_), layout_seed_opt);
+                LayoutInfo layout_item;
+                layout_item.spad_x1     = pad_pos.first;
+                layout_item.lpad_x1     = pad_pos.second;
+                layout_item.spad_center = static_cast<double>(pad_pos.first) + game_cfg_spad_width_ / 2.0;
+                layout_item.lpad_center = static_cast<double>(pad_pos.second) + game_cfg_lpad_width_ / 2.0;
+                layouts_vec.push_back(layout_item);
+                if (layout_item.spad_center < layout_item.lpad_center) { initial_ltr_count_after_reset++; }
+            }
+            balance_layouts(layouts_vec, layout_nb_, left_right_ratio_);
+
+            generations_stagnated_     = 0;
+            last_best_fitness_overall_ = std::numeric_limits<double>::max();
+        }
+
         std::cout << "\n--- Generation " << actual_gen_display << " ---" << std::endl;
 
         train_generation(layouts_vec, population_size, fitness_scores, all_member_steps);
@@ -392,6 +354,29 @@ template <typename T> void Training::NNEngineTrainer<T>::train()
         std::iota(sorted_indices.begin(), sorted_indices.end(), 0);
         std::sort(sorted_indices.begin(), sorted_indices.end(),
                   [&](size_t a, size_t b) { return fitness_scores[a] < fitness_scores[b]; });
+
+        // Update stagnation counter based on the best performer of this generation
+        if (!sorted_indices.empty() && population_size > 0)
+        { // Ensure there are scores to check
+            double current_best_fitness_this_gen = fitness_scores[sorted_indices[0]];
+            const double epsilon                 = 1e-5; // Small tolerance for fitness improvement check
+
+            // Check if member 0 is the best AND its fitness hasn't improved significantly
+            if (sorted_indices[0] == 0 && current_best_fitness_this_gen >= (last_best_fitness_overall_ - epsilon))
+            {
+                generations_stagnated_++;
+            }
+            else
+            {
+                generations_stagnated_ = 0; // Reset if best is not member 0 or if fitness improved
+            }
+            last_best_fitness_overall_ = current_best_fitness_this_gen;
+        }
+        else
+        {
+            generations_stagnated_     = 0;
+            last_best_fitness_overall_ = std::numeric_limits<double>::max();
+        }
 
         net_->UpdateWeightsAndBiases(sorted_indices);
         net_->CreatePopulation(true);
@@ -440,15 +425,17 @@ void Training::NNEngineTrainer<T>::train_generation(
     std::fill(all_member_steps.begin(), all_member_steps.end(), 0.0);
 
     // Prepare config vectors once
-    std::vector<T> x0_T(Config::GameCfg::x0.size());
-    std::transform(Config::GameCfg::x0.begin(), Config::GameCfg::x0.end(), x0_T.begin(),
-                   [](double val) { return static_cast<T>(val); });
-    std::vector<T> v0_T(Config::GameCfg::v0.size());
-    std::transform(Config::GameCfg::v0.begin(), Config::GameCfg::v0.end(), v0_T.begin(),
-                   [](double val) { return static_cast<T>(val); });
-    std::vector<T> a0_T(Config::GameCfg::a0.size());
-    std::transform(Config::GameCfg::a0.begin(), Config::GameCfg::a0.end(), a0_T.begin(),
-                   [](double val) { return static_cast<T>(val); });
+    std::vector<double> x0_double = Config::getVectorDouble("GameCfg.x0");
+    std::vector<T> x0_T(x0_double.size());
+    std::transform(x0_double.begin(), x0_double.end(), x0_T.begin(), [](double val) { return static_cast<T>(val); });
+
+    std::vector<double> v0_double = Config::getVectorDouble("GameCfg.v0");
+    std::vector<T> v0_T(v0_double.size());
+    std::transform(v0_double.begin(), v0_double.end(), v0_T.begin(), [](double val) { return static_cast<T>(val); });
+
+    std::vector<double> a0_double = Config::getVectorDouble("GameCfg.a0");
+    std::vector<T> a0_T(a0_double.size());
+    std::transform(a0_double.begin(), a0_double.end(), a0_T.begin(), [](double val) { return static_cast<T>(val); });
 
     tp::thread_pool pool; // Thread pool for managing simulation tasks
 
@@ -463,20 +450,33 @@ void Training::NNEngineTrainer<T>::train_generation(
 
             // Configure the game simulation for this member
             game_sim.set_config(static_cast<T>(this->cfg_width_), static_cast<T>(this->cfg_height_),
-                                static_cast<T>(Config::GameCfg::pad_y1), static_cast<T>(Config::GameCfg::terrain_y),
-                                static_cast<T>(Config::GameCfg::max_vx), static_cast<T>(Config::GameCfg::max_vy),
-                                static_cast<T>(Config::PlanetCfg::g), static_cast<T>(Config::PlanetCfg::mu_x),
-                                static_cast<T>(Config::PlanetCfg::mu_y), static_cast<T>(Config::LanderCfg::width),
-                                static_cast<T>(Config::LanderCfg::height), static_cast<T>(Config::LanderCfg::max_fuel),
+                                static_cast<T>(Config::getDouble("GameCfg.pad_y1", 50.0)),
+                                static_cast<T>(Config::getDouble("GameCfg.terrain_y", 100.0)),
+                                static_cast<T>(Config::getDouble("GameCfg.max_vx", 20.0)),
+                                static_cast<T>(Config::getDouble("GameCfg.max_vy", 40.0)),
+                                static_cast<T>(Config::getDouble("PlanetCfg.g", -1.62)),
+                                static_cast<T>(Config::getDouble("PlanetCfg.mu_x", 0.1)),
+                                static_cast<T>(Config::getDouble("PlanetCfg.mu_y", 0.1)),
+                                static_cast<T>(Config::getDouble("LanderCfg.width", 20.0)),
+                                static_cast<T>(Config::getDouble("LanderCfg.height", 20.0)),
+                                static_cast<T>(Config::getInt("LanderCfg.max_fuel", 500)),
                                 static_cast<T>(this->game_cfg_spad_width_), static_cast<T>(this->game_cfg_lpad_width_),
                                 x0_T, v0_T, a0_T);
 
-            double total_fitness_for_member = 0.0;
-            double total_steps_for_member   = 0.0;
+            double total_penalty_ltr_accum = 0.0;
+            int count_layouts_ltr          = 0;
+            int successful_landings_ltr    = 0;
+
+            double total_penalty_rtl_accum = 0.0;
+            int count_layouts_rtl          = 0;
+            int successful_landings_rtl    = 0;
+
+            double total_steps_this_member = 0.0;
 
             // Inner loop: Iterate over each layout for the current member
             for (const auto& layout_info : layouts)
             {
+                bool is_ltr_layout = layout_info.spad_center < layout_info.lpad_center;
                 game_sim.reset(static_cast<T>(layout_info.spad_x1), static_cast<T>(layout_info.lpad_x1));
                 game_sim.get_state(state_buffer_local.data(), state_buffer_local.size());
 
@@ -500,16 +500,57 @@ void Training::NNEngineTrainer<T>::train_generation(
 
                 double terminal_penalty_layout_local =
                     static_cast<double>(game_sim.calculate_terminal_penalty(steps_this_layout_local));
-                double fitness_for_layout = accumulated_step_penalty_layout_local + terminal_penalty_layout_local;
+                double penalty_for_layout = accumulated_step_penalty_layout_local + terminal_penalty_layout_local;
 
-                total_fitness_for_member += fitness_for_layout;
-                total_steps_for_member += static_cast<double>(steps_this_layout_local);
+                total_steps_this_member += static_cast<double>(steps_this_layout_local);
+
+                if (is_ltr_layout)
+                {
+                    total_penalty_ltr_accum += penalty_for_layout;
+                    count_layouts_ltr++;
+                    if (game_sim.landed_successfully) { successful_landings_ltr++; }
+                }
+                else
+                {
+                    total_penalty_rtl_accum += penalty_for_layout;
+                    count_layouts_rtl++;
+                    if (game_sim.landed_successfully) { successful_landings_rtl++; }
+                }
             } // End of layouts loop for one member
 
-            // Store the accumulated fitness and steps for this member
-            // This is thread-safe as each task writes to a unique member_id index.
-            fitness_scores[member_id]   = total_fitness_for_member;
-            all_member_steps[member_id] = total_steps_for_member;
+            const double PENALTY_FOR_ZERO_SUCCESS_IN_DIRECTION = 50000.0;  // Increased penalty
+            const double MAX_EXPECTED_PENALTY_NO_LAYOUTS       = 100000.0; // Fallback if a direction has no layouts
+
+            double avg_penalty_ltr                             = MAX_EXPECTED_PENALTY_NO_LAYOUTS;
+            if (count_layouts_ltr > 0)
+            {
+                avg_penalty_ltr = total_penalty_ltr_accum / static_cast<double>(count_layouts_ltr);
+                if (successful_landings_ltr == 0)
+                { // Penalize if LTR layouts were tried but none succeeded
+                    avg_penalty_ltr += PENALTY_FOR_ZERO_SUCCESS_IN_DIRECTION;
+                }
+            }
+
+            double avg_penalty_rtl = MAX_EXPECTED_PENALTY_NO_LAYOUTS;
+            if (count_layouts_rtl > 0)
+            {
+                avg_penalty_rtl = total_penalty_rtl_accum / static_cast<double>(count_layouts_rtl);
+                if (successful_landings_rtl == 0)
+                { // Penalize if RTL layouts were tried but none succeeded
+                    avg_penalty_rtl += PENALTY_FOR_ZERO_SUCCESS_IN_DIRECTION;
+                }
+            }
+
+            double primary_fitness          = std::max(avg_penalty_ltr, avg_penalty_rtl);
+
+            const double DUAL_LANDING_BONUS = 25000.0; // Increased bonus
+            if (successful_landings_ltr > 0 && successful_landings_rtl > 0)
+            {
+                primary_fitness -= DUAL_LANDING_BONUS; // Lower penalty is better
+            }
+
+            fitness_scores[member_id]   = primary_fitness;
+            all_member_steps[member_id] = total_steps_this_member;
         }; // End of sim_task lambda
 
         if (this->multithread_) { pool.push_task(sim_task); }
