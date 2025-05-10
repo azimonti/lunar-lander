@@ -58,6 +58,9 @@ template <typename T> Training::NNEngineTrainer<T>::NNEngineTrainer() : current_
     generations_stagnated_     = 0;
     last_best_fitness_overall_ = std::numeric_limits<double>::max();
 
+    // Load fitness function parameters
+    random_injection_ratio_    = Config::getDouble("NNConfig.random_injection_ratio", 0.30);
+
     random_generator_.seed(static_cast<unsigned int>(nn_seed_));
 }
 
@@ -85,7 +88,7 @@ template <typename T> bool Training::NNEngineTrainer<T>::init()
 
     net_->SetName(nn_name_.c_str());
 
-    net_->SetPopulationStrategy(nn::PopulationStrategy::MIXED_WITH_RANDOM_INJECTION, 0.30); // 30% random injection
+    net_->SetPopulationStrategy(nn::PopulationStrategy::MIXED_WITH_RANDOM_INJECTION, random_injection_ratio_);
     net_->CreatePopulation(elitism_config_); // Initial population creation
 
     current_generation_ = 0;
@@ -456,26 +459,20 @@ void Training::NNEngineTrainer<T>::train_generation(
                                 static_cast<T>(this->game_cfg_spad_width_), static_cast<T>(this->game_cfg_lpad_width_),
                                 x0_T, v0_T, a0_T);
 
-            double total_penalty_ltr_accum = 0.0;
-            int count_layouts_ltr          = 0;
-            int successful_landings_ltr    = 0;
-
-            double total_penalty_rtl_accum = 0.0;
-            int count_layouts_rtl          = 0;
-            int successful_landings_rtl    = 0;
-
-            double total_steps_this_member = 0.0;
+            double total_fitness_for_member = 0.0;
+            double total_steps_for_member   = 0.0;
 
             // Inner loop: Iterate over each layout for the current member
             for (const auto& layout_info : layouts)
             {
-                bool is_ltr_layout = layout_info.spad_center < layout_info.lpad_center;
                 game_sim.reset(static_cast<T>(layout_info.spad_x1), static_cast<T>(layout_info.lpad_x1));
                 game_sim.get_state(state_buffer_local.data(), state_buffer_local.size());
 
-                bool done_local                              = false;
+                bool done_local = false;
+#if defined(USE_STEP_PENALTY)
                 double accumulated_step_penalty_layout_local = 0.0;
-                int steps_this_layout_local                  = 0;
+#endif
+                int steps_this_layout_local = 0;
 
                 while (steps_this_layout_local < this->game_cfg_max_steps_)
                 {
@@ -485,69 +482,31 @@ void Training::NNEngineTrainer<T>::train_generation(
                     done_local = game_sim.update(static_cast<int>(action_idx), state_buffer_local.data(),
                                                  state_buffer_local.size());
 
+#if defined(USE_STEP_PENALTY)
                     accumulated_step_penalty_layout_local +=
                         static_cast<double>(game_sim.calculate_step_penalty(static_cast<int>(action_idx)));
+#endif
                     steps_this_layout_local++;
                     if (done_local) { break; }
                 } // End of simulation steps loop for one layout
 
+#if defined(USE_STEP_PENALTY)
                 double terminal_penalty_layout_local =
                     static_cast<double>(game_sim.calculate_terminal_penalty(steps_this_layout_local));
-                double penalty_for_layout = accumulated_step_penalty_layout_local + terminal_penalty_layout_local;
+                double fitness_for_layout = accumulated_step_penalty_layout_local + terminal_penalty_layout_local;
+#else
 
-                total_steps_this_member += static_cast<double>(steps_this_layout_local);
-
-                if (is_ltr_layout)
-                {
-                    total_penalty_ltr_accum += penalty_for_layout;
-                    count_layouts_ltr++;
-                    if (game_sim.landed_successfully) { successful_landings_ltr++; }
-                }
-                else
-                {
-                    total_penalty_rtl_accum += penalty_for_layout;
-                    count_layouts_rtl++;
-                    if (game_sim.landed_successfully) { successful_landings_rtl++; }
-                }
+                double fitness_for_layout =
+                    static_cast<double>(game_sim.calculate_terminal_penalty(steps_this_layout_local));
+#endif
+                total_fitness_for_member += fitness_for_layout;
+                total_steps_for_member += static_cast<double>(steps_this_layout_local);
             } // End of layouts loop for one member
 
-            const double PENALTY_FOR_ZERO_SUCCESS_IN_DIRECTION = 150000.0; // Increased penalty
-            const double MAX_EXPECTED_PENALTY_NO_LAYOUTS       = 100000.0; // Fallback if a direction has no layouts
-
-            double avg_penalty_ltr                             = MAX_EXPECTED_PENALTY_NO_LAYOUTS;
-            if (count_layouts_ltr > 0)
-            {
-                avg_penalty_ltr = total_penalty_ltr_accum / static_cast<double>(count_layouts_ltr);
-                if (successful_landings_ltr == 0)
-                { // Penalize if LTR layouts were tried but none succeeded
-                    avg_penalty_ltr += PENALTY_FOR_ZERO_SUCCESS_IN_DIRECTION;
-                }
-            }
-
-            double avg_penalty_rtl = MAX_EXPECTED_PENALTY_NO_LAYOUTS;
-            if (count_layouts_rtl > 0)
-            {
-                avg_penalty_rtl = total_penalty_rtl_accum / static_cast<double>(count_layouts_rtl);
-                if (successful_landings_rtl == 0)
-                { // Penalize if RTL layouts were tried but none succeeded
-                    avg_penalty_rtl += PENALTY_FOR_ZERO_SUCCESS_IN_DIRECTION;
-                }
-            }
-
-            double primary_fitness              = std::max(avg_penalty_ltr, avg_penalty_rtl);
-            const double BALANCE_PENALTY_FACTOR = 0.5; // Tune this factor
-
-            // Add penalty for imbalance
-            primary_fitness += BALANCE_PENALTY_FACTOR * std::abs(avg_penalty_ltr - avg_penalty_rtl);
-
-            const double DUAL_LANDING_BONUS = 75000.0; // Increased bonus
-            if (successful_landings_ltr > 0 && successful_landings_rtl > 0)
-            {
-                primary_fitness -= DUAL_LANDING_BONUS; // Lower penalty is better
-            }
-
-            fitness_scores[member_id]   = primary_fitness;
-            all_member_steps[member_id] = total_steps_this_member;
+            // Store the accumulated fitness and steps for this member
+            // This is thread-safe as each task writes to a unique member_id index.
+            fitness_scores[member_id]   = total_fitness_for_member;
+            all_member_steps[member_id] = total_steps_for_member;
         }; // End of sim_task lambda
 
         if (this->multithread_) { pool.push_task(sim_task); }

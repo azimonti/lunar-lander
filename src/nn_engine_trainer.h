@@ -37,9 +37,6 @@ namespace Training
         bool save();
         void train();
 
-        // Optional: A method to get an action from the best network, similar to Python's get_action
-        // int get_action(const std::vector<T>& current_state);
-
       private:
         // Helper methods (definitions in .cpp)
         std::string format_time(long long total_seconds);
@@ -85,6 +82,12 @@ namespace Training
         int reset_period_config_;
         int generations_stagnated_;
         double last_best_fitness_overall_;
+
+        // Fitness function parameters
+        double max_expected_penalty_no_layouts_;
+
+        // GA parameters
+        double random_injection_ratio_;
     };
 
 } // namespace Training

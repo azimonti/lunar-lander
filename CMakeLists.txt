@@ -75,6 +75,8 @@ if(UNITYBUILD)
 endif()
 
 # add the C++ binaries
+# comment for use only terminal penalty
+add_definitions( -DUSE_STEP_PENALTY )
 add_executable(main_train_d
     src/main_train.cpp
     src/nn_engine_trainer.cpp
