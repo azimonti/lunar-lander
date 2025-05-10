@@ -19,7 +19,7 @@ template <typename T> void bind_game_logic_class(py::module& m, const std::strin
     using Class = GameLogicCpp<T>; // Alias for the specific instantiation
 
     py::class_<Class>(m, class_name.c_str())
-        .def(py::init<bool>(), py::arg("no_print_flag") = false) // Constructor binding
+        .def(py::init<bool, const std::string&>(), py::arg("no_print_flag") = false, py::arg("config_file") = "")
 
         // --- Bind Public Member Variables ---
         .def_readwrite("x", &Class::x)
@@ -34,13 +34,6 @@ template <typename T> void bind_game_logic_class(py::module& m, const std::strin
         .def_readwrite("landing_pad_y", &Class::landing_pad_y)
         .def_readwrite("no_print", &Class::no_print)
         .def_readwrite("last_action", &Class::last_action)
-
-        // --- Bind Public Methods ---
-        .def("set_config", &Class::set_config, py::arg("cfg_w"), py::arg("cfg_h"), py::arg("gcfg_pad_y1"),
-             py::arg("gcfg_terrain_y_val"), py::arg("gcfg_max_v_x"), py::arg("gcfg_max_v_y"), py::arg("pcfg_gravity"),
-             py::arg("pcfg_fric_x"), py::arg("pcfg_fric_y"), py::arg("lcfg_w"), py::arg("lcfg_h"), py::arg("lcfg_fuel"),
-             py::arg("gcfg_spad_width"), py::arg("gcfg_lpad_width"), py::arg("gcfg_x0_vec"), py::arg("gcfg_v0_vec"),
-             py::arg("gcfg_a0_vec"), "Sets the configuration parameters for the game simulation.")
 
         // Bind reset methods using static_cast to resolve overloads
         .def("reset", static_cast<void (Class::*)()>(&Class::reset),

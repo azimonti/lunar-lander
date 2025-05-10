@@ -65,7 +65,7 @@ pybind11_add_module(lunar_lander_cpp SHARED
 )
 
 # Link the Python module against the static library
-target_link_libraries(lunar_lander_cpp PRIVATE game_logic_cpp)
+target_link_libraries(lunar_lander_cpp PRIVATE game_logic_cpp debug config_loaderd optimized config_loader)
 set_target_properties(   lunar_lander_cpp   PROPERTIES DEBUG_POSTFIX "d"          )
 if(WIN32)
   set_target_properties( lunar_lander_cpp PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS FALSE)

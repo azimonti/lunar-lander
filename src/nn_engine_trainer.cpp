@@ -26,40 +26,40 @@
 template <typename T> Training::NNEngineTrainer<T>::NNEngineTrainer() : current_generation_(0)
 {
     // Cache configuration values
-    nn_name_                = Config::getString("NNConfig.name", "default_nn");
-    save_path_nn_           = Config::getString("NNConfig.save_path_nn", "data/nn_models/");
-    save_nn_flag_           = Config::getBool("NNConfig.save_nn", true);
-    overwrite_save_         = Config::getBool("NNConfig.overwrite", false);
-    save_interval_          = Config::getInt("NNConfig.save_interval", 10);
-    epochs_                 = Config::getInt("NNConfig.epochs", 100);
-    layout_nb_              = Config::getInt("NNConfig.layout_nb", 10);
-    left_right_ratio_       = Config::getDouble("NNConfig.left_right_ratio", 0.5);
+    nn_name_                = Config::getString("NNConfig.name");
+    save_path_nn_           = Config::getString("NNConfig.save_path_nn");
+    save_nn_flag_           = Config::getBool("NNConfig.save_nn");
+    overwrite_save_         = Config::getBool("NNConfig.overwrite");
+    save_interval_          = Config::getInt("NNConfig.save_interval");
+    epochs_                 = Config::getInt("NNConfig.epochs");
+    layout_nb_              = Config::getInt("NNConfig.layout_nb");
+    left_right_ratio_       = Config::getDouble("NNConfig.left_right_ratio");
 
-    nn_seed_                = Config::getInt("NNConfig.seed", 0);
-    population_size_config_ = Config::getInt("NNConfig.population_size", 100);
-    top_individuals_config_ = Config::getInt("NNConfig.top_individuals", 10);
-    activation_id_config_   = Config::getInt("NNConfig.activation_id", 0);
-    elitism_config_         = Config::getBool("NNConfig.elitism", true);
-    multithread_            = Config::getBool("NNConfig.multithread", true);
+    nn_seed_                = Config::getInt("NNConfig.seed");
+    population_size_config_ = Config::getInt("NNConfig.population_size");
+    top_individuals_config_ = Config::getInt("NNConfig.top_individuals");
+    activation_id_config_   = Config::getInt("NNConfig.activation_id");
+    elitism_config_         = Config::getBool("NNConfig.elitism");
+    multithread_            = Config::getBool("NNConfig.multithread");
 
     nn_size_config_.push_back(5); // Input layer: 5 state variables
     std::vector<int> hlayers_vec = Config::getVectorInt("NNConfig.hlayers");
     for (int h_size : hlayers_vec) { nn_size_config_.push_back(static_cast<size_t>(h_size)); }
     nn_size_config_.push_back(4); // Output layer: 4 actions
 
-    cfg_width_                 = Config::getDouble("Cfg.width", 800.0);
-    cfg_height_                = Config::getDouble("Cfg.height", 600.0);
-    game_cfg_spad_width_       = Config::getDouble("GameCfg.spad_width", 100.0);
-    game_cfg_lpad_width_       = Config::getDouble("GameCfg.lpad_width", 100.0);
-    game_cfg_max_steps_        = Config::getInt("GameCfg.max_steps", 1000);
+    cfg_width_                 = Config::getDouble("Cfg.width");
+    cfg_height_                = Config::getDouble("Cfg.height");
+    game_cfg_spad_width_       = Config::getDouble("GameCfg.spad_width");
+    game_cfg_lpad_width_       = Config::getDouble("GameCfg.lpad_width");
+    game_cfg_max_steps_        = Config::getInt("GameCfg.max_steps");
 
     // Initialize stagnation tracking variables
-    reset_period_config_       = Config::getInt("NNConfig.reset_period", 100000); // Default to a high value
+    reset_period_config_       = Config::getInt("NNConfig.reset_period");
     generations_stagnated_     = 0;
     last_best_fitness_overall_ = std::numeric_limits<double>::max();
 
     // Load fitness function parameters
-    random_injection_ratio_    = Config::getDouble("NNConfig.random_injection_ratio", 0.30);
+    random_injection_ratio_    = Config::getDouble("NNConfig.random_injection_ratio");
 
     random_generator_.seed(static_cast<unsigned int>(nn_seed_));
 }
@@ -83,8 +83,7 @@ template <typename T> bool Training::NNEngineTrainer<T>::init()
 
     net_ = std::make_unique<nn::ANN_MLP_GA<T>>(nn_size_config_, nn_seed_, static_cast<size_t>(population_size_config_),
                                                static_cast<size_t>(top_individuals_config_),
-                                               static_cast<size_t>(activation_id_config_),
-                                               static_cast<size_t>(elitism_config_));
+                                               static_cast<size_t>(activation_id_config_));
 
     net_->SetName(nn_name_.c_str());
 
@@ -233,8 +232,8 @@ void Training::NNEngineTrainer<T>::balance_layouts(std::vector<LayoutInfo>& layo
 
             layouts_vec[static_cast<size_t>(i)].spad_x1     = static_cast<int>(std::round(new_spad_x1_double));
             layouts_vec[static_cast<size_t>(i)].lpad_x1     = static_cast<int>(std::round(new_lpad_x1_double));
-            layouts_vec[static_cast<size_t>(i)].spad_center = new_spad_center; // Update cached center
-            layouts_vec[static_cast<size_t>(i)].lpad_center = new_lpad_center; // Update cached center
+            layouts_vec[static_cast<size_t>(i)].spad_center = new_spad_center;
+            layouts_vec[static_cast<size_t>(i)].lpad_center = new_lpad_center;
 
             flipped_count++;
         }
@@ -305,6 +304,14 @@ template <typename T> void Training::NNEngineTrainer<T>::train()
     std::vector<double> fitness_scores(population_size);
     std::vector<double> all_member_steps(population_size);
 
+    // Pre-allocate game simulators
+    std::vector<GameLogicCpp<T>> game_sims;
+    game_sims.reserve(population_size); // Reserve space
+    for (size_t i = 0; i < population_size; ++i)
+    {
+        game_sims.emplace_back(true); // Construct in-place with no_print_flag = true
+    }
+
     for (int gen_offset = 0; gen_offset < epochs_; ++gen_offset)
     {
         auto gen_start_time    = std::chrono::steady_clock::now();
@@ -344,7 +351,7 @@ template <typename T> void Training::NNEngineTrainer<T>::train()
 
         std::cout << "\n--- Generation " << actual_gen_display << " ---" << std::endl;
 
-        train_generation(layouts_vec, population_size, fitness_scores, all_member_steps);
+        train_generation(layouts_vec, population_size, fitness_scores, all_member_steps, game_sims);
 
         std::vector<size_t> sorted_indices(population_size);
         std::iota(sorted_indices.begin(), sorted_indices.end(), 0);
@@ -411,27 +418,14 @@ template <typename T> void Training::NNEngineTrainer<T>::train()
 }
 
 template <typename T>
-void Training::NNEngineTrainer<T>::train_generation(
-    const std::vector<LayoutInfo>& layouts, size_t population_size,
-    std::vector<double>& fitness_scores,   // Output: per member total fitness
-    std::vector<double>& all_member_steps) // Output: per member total steps
+void Training::NNEngineTrainer<T>::train_generation(const std::vector<LayoutInfo>& layouts, size_t population_size,
+                                                    std::vector<double>& fitness_scores,
+                                                    std::vector<double>& all_member_steps,
+                                                    std::vector<GameLogicCpp<T>>& game_sims)
 {
     // Initialize fitness scores and steps to zero for accumulation
     std::fill(fitness_scores.begin(), fitness_scores.end(), 0.0);
     std::fill(all_member_steps.begin(), all_member_steps.end(), 0.0);
-
-    // Prepare config vectors once
-    std::vector<double> x0_double = Config::getVectorDouble("GameCfg.x0");
-    std::vector<T> x0_T(x0_double.size());
-    std::transform(x0_double.begin(), x0_double.end(), x0_T.begin(), [](double val) { return static_cast<T>(val); });
-
-    std::vector<double> v0_double = Config::getVectorDouble("GameCfg.v0");
-    std::vector<T> v0_T(v0_double.size());
-    std::transform(v0_double.begin(), v0_double.end(), v0_T.begin(), [](double val) { return static_cast<T>(val); });
-
-    std::vector<double> a0_double = Config::getVectorDouble("GameCfg.a0");
-    std::vector<T> a0_T(a0_double.size());
-    std::transform(a0_double.begin(), a0_double.end(), a0_T.begin(), [](double val) { return static_cast<T>(val); });
 
     tp::thread_pool pool; // Thread pool for managing simulation tasks
 
@@ -439,25 +433,10 @@ void Training::NNEngineTrainer<T>::train_generation(
     for (size_t member_id = 0; member_id < population_size; ++member_id)
     {
         // Define a simulation task for the current member
-        auto sim_task = [this, member_id, &layouts, &fitness_scores, &all_member_steps, &x0_T, &v0_T, &a0_T]() {
-            // Initialize GameLogic and state buffer once per member task
-            std::vector<T> state_buffer_local(5); // 5 state variables for the lander
-            GameLogicCpp<T> game_sim(true);       // true for no_print_flag
-
-            // Configure the game simulation for this member
-            game_sim.set_config(static_cast<T>(this->cfg_width_), static_cast<T>(this->cfg_height_),
-                                static_cast<T>(Config::getDouble("GameCfg.pad_y1", 50.0)),
-                                static_cast<T>(Config::getDouble("GameCfg.terrain_y", 100.0)),
-                                static_cast<T>(Config::getDouble("GameCfg.max_vx", 20.0)),
-                                static_cast<T>(Config::getDouble("GameCfg.max_vy", 40.0)),
-                                static_cast<T>(Config::getDouble("PlanetCfg.g", -1.62)),
-                                static_cast<T>(Config::getDouble("PlanetCfg.mu_x", 0.1)),
-                                static_cast<T>(Config::getDouble("PlanetCfg.mu_y", 0.1)),
-                                static_cast<T>(Config::getDouble("LanderCfg.width", 20.0)),
-                                static_cast<T>(Config::getDouble("LanderCfg.height", 20.0)),
-                                static_cast<T>(Config::getInt("LanderCfg.max_fuel", 500)),
-                                static_cast<T>(this->game_cfg_spad_width_), static_cast<T>(this->game_cfg_lpad_width_),
-                                x0_T, v0_T, a0_T);
+        auto sim_task = [this, member_id, &layouts, &fitness_scores, &all_member_steps, &game_sims]() {
+            // Initialize state buffer once per member task
+            std::vector<T> state_buffer_local(5);                   // 5 state variables for the lander
+            GameLogicCpp<T>& game_sim       = game_sims[member_id]; // Use pre-allocated simulator
 
             double total_fitness_for_member = 0.0;
             double total_steps_for_member   = 0.0;

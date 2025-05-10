@@ -96,7 +96,7 @@ planet_cfg = SimpleNamespace(
 
 nn_config = SimpleNamespace(
     name="lunar_lander",    # nn name
-    hlayers=[16, 32, 16],   # hidden layer structure
+    hlayers=[16, 32],       # hidden layer structure
     use_float=False,        # allow switch between c++ float and double
     seed=5247,              # seed
     top_individuals=10,     # number of top individuals to be selected

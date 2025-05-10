@@ -11,6 +11,7 @@
 #include <cstddef>
 #include <utility>
 #include <vector>
+#include "config_loader.h" // Added back for constructor loading
 
 template <typename T> class GameLogicCpp
 {
@@ -47,12 +48,13 @@ template <typename T> class GameLogicCpp
 
   public:
     // --- Constructor ---
-    // Pass necessary config values directly or via a struct/class
-    GameLogicCpp(bool no_print_flag = false);
+    // If config_file is empty, assumes config is already loaded.
+    // Otherwise, loads the specified config file.
+    GameLogicCpp(bool no_print_flag = false, const std::string& config_file = "");
 
     // --- Public Methods ---
     void reset(); // Consider passing config struct here if dynamic
-    // Overload reset to accept specific pad positions if needed for training
+    // Overload reset to accept specific pad positions and initial state if needed for training
     void reset(T spad_x1_new, T lpad_x1_new);
 
     // The main update function (Returning vector might be less efficient for templates, consider pointer version)
@@ -65,14 +67,6 @@ template <typename T> class GameLogicCpp
     std::vector<T> get_state() const;
     void get_state(T* pOutputs, size_t outputsSize) const;
 
-    // Method to explicitly set config values if not passed in constructor
-    void set_config(T cfg_w, T cfg_h, T gcfg_pad_y1, T gcfg_terrain_y_val, T gcfg_max_v_x, T gcfg_max_v_y,
-                    T pcfg_gravity, T pcfg_fric_x, T pcfg_fric_y, T lcfg_w, T lcfg_h, T lcfg_fuel,
-                    T gcfg_spad_width, // Starting pad width
-                    T gcfg_lpad_width, // Landing pad width
-                    const std::vector<T>& gcfg_x0_vec, const std::vector<T>& gcfg_v0_vec,
-                    const std::vector<T>& gcfg_a0_vec);
-
     // --- Penalty Calculation Methods ---
     T calculate_step_penalty(int action) const;
     T calculate_terminal_penalty(int steps_taken) const;
@@ -80,6 +74,10 @@ template <typename T> class GameLogicCpp
   private:
     // Helper to recalculate derived values after config/pad changes
     void recalculate_derived_values();
+
+    // Helper to load configuration vectors with the class's type T
+    static std::vector<T> getConfigVectorAsType(const std::string& key);
+    // initialize_from_config removed
 };
 
 #endif

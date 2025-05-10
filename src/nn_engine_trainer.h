@@ -13,6 +13,7 @@
 #include <string>
 #include <vector>
 #include "ann_mlp_ga_v1.h"
+#include "game_logic.h" // Added for GameLogicCpp<T>
 
 namespace Training
 {
@@ -43,10 +44,11 @@ namespace Training
         void balance_layouts(std::vector<LayoutInfo>& layouts, int num_layouts_to_balance, double target_ltr_ratio);
 
         // The core training logic for a single generation
-        void train_generation(
-            const std::vector<LayoutInfo>& layouts, size_t population_size,
-            std::vector<double>& fitness_scores,    // Output: per member total fitness (double for precision)
-            std::vector<double>& all_member_steps); // Output: per member total steps (double for precision)
+        void
+        train_generation(const std::vector<LayoutInfo>& layouts, size_t population_size,
+                         std::vector<double>& fitness_scores, // Output: per member total fitness (double for precision)
+                         std::vector<double>& all_member_steps, // Output: per member total steps (double for precision)
+                         std::vector<GameLogicCpp<T>>& game_sims); // Added: vector of game simulators
 
         // Member variables
         std::unique_ptr<nn::ANN_MLP_GA<T>> net_;

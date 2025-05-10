@@ -1,12 +1,12 @@
 '''
 /******************/
 /*     main.py    */
-/*  Version 2.0   */
-/*   2025/05/08   */
+/*  Version 2.1   */
+/*   2025/05/10   */
 /******************/
 '''
 from mod_lander import LanderVisuals
-from mod_config import palette, cfg, game_cfg,  planet_cfg, lander_cfg
+from mod_config import palette, cfg, game_cfg, lander_cfg
 from mod_nn_play import NeuralNetwork
 import pygame
 import argparse
@@ -28,27 +28,6 @@ except ModuleNotFoundError as e:
 c = palette
 
 
-def reset_pad_positions(seed=None, force_left_to_right=False,
-                        force_right_to_left=False):
-    """Resets the pad positions if random_position is True.
-    Uses provided seed or generates one."""
-    game_cfg.spad_x1, game_cfg.lpad_x1 = generate_random_pad_positions(
-        cfg.width, game_cfg.spad_width, game_cfg.lpad_width,
-        seed=game_cfg.current_seed,
-        force_left_to_right=force_left_to_right,
-        force_right_to_left=force_right_to_left
-    )
-    # Update lander initial x position to be centered on the new start pad
-    game_cfg.x0[0] = game_cfg.spad_x1 + (game_cfg.spad_width / 2
-                                         ) - (lander_cfg.width / 2)
-
-    if cfg.verbose:
-        print(f"Pad positions random with seed: {game_cfg.current_seed}")
-        print(f"  Start Pad x1: {game_cfg.spad_x1}, "
-              f"Landing Pad x1: {game_cfg.lpad_x1}")
-        print(f"  Lander Initial x0: {game_cfg.x0[0]:.2f}")
-
-
 def draw_game(screen: pygame.Surface, logic, visuals: LanderVisuals,
               sounds: SimpleNamespace, font: pygame.font.Font):
     """Renders the current game state."""
@@ -57,7 +36,7 @@ def draw_game(screen: pygame.Surface, logic, visuals: LanderVisuals,
     fuel = logic.fuel
     vx = logic.vx
     vy = logic.vy
-    last_action = logic.last_action  # Use the exposed member variable
+    last_action = logic.last_action
 
     # Clear screen
     screen.fill(c.k)
@@ -113,7 +92,8 @@ def draw_game(screen: pygame.Surface, logic, visuals: LanderVisuals,
     pygame.display.flip()
 
 
-def game_loop(mode: str):
+def game_loop(mode: str, force_left_to_right: bool = False,
+              force_right_to_left: bool = False):
     """Runs the main game loop for human play or NN play."""
     # Configs are now imported at the top level
 
@@ -135,30 +115,21 @@ def game_loop(mode: str):
 
     # Initialize Game Logic and Visuals
     # Use the C++ GameLogic implementation
-    logic = GameLogicCpp(no_print_flag=False)
+    logic = GameLogicCpp(False, 'config.txt')
     visuals = LanderVisuals()  # Loads assets
 
-    # --- Configure the C++ Game Logic ---
-    # Configs are available from the top-level import
-    logic.set_config(
-        cfg_w=cfg.width,
-        cfg_h=cfg.height, gcfg_pad_y1=game_cfg.pad_y1,
-        gcfg_terrain_y_val=game_cfg.terrain_y,
-        gcfg_max_v_x=game_cfg.max_vx, gcfg_max_v_y=game_cfg.max_vy,
-        pcfg_gravity=planet_cfg.g,
-        pcfg_fric_x=planet_cfg.mu_x, pcfg_fric_y=planet_cfg.mu_y,
-        lcfg_w=lander_cfg.width, lcfg_h=lander_cfg.height,
-        lcfg_fuel=lander_cfg.max_fuel,
-        gcfg_spad_width=game_cfg.spad_width,
-        gcfg_lpad_width=game_cfg.lpad_width,
-        gcfg_x0_vec=game_cfg.x0.tolist(),
-        gcfg_v0_vec=game_cfg.v0.tolist(),
-        gcfg_a0_vec=game_cfg.a0.tolist()
+    # Reset pad positions
+    game_cfg.spad_x1, game_cfg.lpad_x1 = generate_random_pad_positions(
+        cfg.width, game_cfg.spad_width, game_cfg.lpad_width,
+        seed=game_cfg.current_seed,
+        force_left_to_right=force_left_to_right,
+        force_right_to_left=force_right_to_left
     )
+    # Update lander initial x position to be centered on the new start pad
+    game_cfg.x0[0] = game_cfg.spad_x1 + (game_cfg.spad_width / 2
+                                         ) - (lander_cfg.width / 2)
 
-    # --- Reset the C++ logic using the CURRENT pad positions ---
-    # This ensures the lander starts centered
-    # on the potentially randomized start pad
+    # Update game logic with new pad positions
     logic.reset(game_cfg.spad_x1, game_cfg.lpad_x1)
 
     # Initialize NN if in NN mode
@@ -289,14 +260,14 @@ def main():
 
     if args.mode == 'play':
         print("Starting game in Manual Play mode...")
-        reset_pad_positions(force_left_to_right=args.force_left_to_right,
-                            force_right_to_left=args.force_right_to_left)
-        game_loop(mode='play')
+        game_loop(mode='play',
+                  force_left_to_right=args.force_left_to_right,
+                  force_right_to_left=args.force_right_to_left)
     elif args.mode == 'nn_play':
-        reset_pad_positions(force_left_to_right=args.force_left_to_right,
-                            force_right_to_left=args.force_right_to_left)
         print("Starting game in NN Play mode...")
-        game_loop(mode='nn_play')
+        game_loop(mode='nn_play',
+                  force_left_to_right=args.force_left_to_right,
+                  force_right_to_left=args.force_right_to_left)
 
     print("Exiting.")
 
