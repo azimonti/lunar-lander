@@ -24,10 +24,8 @@ except ModuleNotFoundError as e:
 
 class NeuralNetwork():
     def __init__(self):
-        if nn_config.use_float:
-            self._net = cpp_nn_py.ANN_MLP_GA_float()
-        else:
-            self._net = cpp_nn_py.ANN_MLP_GA_double()
+        # Always loading the double version in play mode
+        self._net = cpp_nn_py.ANN_MLP_GA_double()
         self._net.SetName(nn_config.name)
         filename = f"{nn_config.name}_last.txt"
 
@@ -49,9 +47,7 @@ class NeuralNetwork():
             print("Error: Network size not determined (load network first).")
             return 0
 
-        # Determine dtype based on config
-        dtype = np.float32 if nn_config.use_float else np.float64
-        inputs = np.array(current_state, dtype=dtype)
+        inputs = np.array(current_state, dtype=np.float64)
 
         # Use member_id 0 - in the loaded network represents the best
         # or the result of the population evolution.

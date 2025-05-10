@@ -17,8 +17,7 @@
 // Specialization for GameLogicCpp<double>
 template <> std::vector<double> GameLogicCpp<double>::getConfigVectorAsType(const std::string& key)
 {
-    std::vector<double> vec = Config::getVectorDouble(key);
-    return vec;
+    return Config::getVectorDouble(key);
 }
 
 // Specialization for GameLogicCpp<float>
@@ -65,8 +64,8 @@ GameLogicCpp<T>::GameLogicCpp(bool no_print_flag_param, const std::string& confi
     lpad_x1             = static_cast<T>(Config::getDouble("GameCfg.lpad_x1"));
     lpad_width          = static_cast<T>(Config::getDouble("GameCfg.lpad_width"));
 
-    cfg_width           = static_cast<T>(Config::getDouble("Cfg.width"));
-    cfg_height          = static_cast<T>(Config::getDouble("Cfg.height"));
+    cfg_width           = static_cast<T>(Config::getDouble("DisplayCfg.width"));
+    cfg_height          = static_cast<T>(Config::getDouble("DisplayCfg.height"));
 
     spad_width          = static_cast<T>(Config::getDouble("GameCfg.spad_width"));
 

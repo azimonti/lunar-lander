@@ -59,9 +59,11 @@ To get started with the lunar lander:
 6. Run the program
   ```
   python main.py --mode=play     # default - user plays the game
-  python main.py --mode=nn_train # optional --continue for training the neural network
+  ./externals/ma-libs/build/Release/main_train_d # optional --continue for training the neural network
   python main.py --mode=nn_play  # nn is playing the game using the last save neural network
   ```
+
+A set of weights is available in `sample_runs`. It is possible to use a sample, copying the desired file to `data/lunar_lander_last.txt`.
 
 ## License
 

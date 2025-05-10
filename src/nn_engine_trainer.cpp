@@ -47,8 +47,8 @@ template <typename T> Training::NNEngineTrainer<T>::NNEngineTrainer() : current_
     for (int h_size : hlayers_vec) { nn_size_config_.push_back(static_cast<size_t>(h_size)); }
     nn_size_config_.push_back(4); // Output layer: 4 actions
 
-    cfg_width_                 = Config::getDouble("Cfg.width");
-    cfg_height_                = Config::getDouble("Cfg.height");
+    cfg_width_                 = Config::getDouble("DisplayCfg.width");
+    cfg_height_                = Config::getDouble("DisplayCfg.height");
     game_cfg_spad_width_       = Config::getDouble("GameCfg.spad_width");
     game_cfg_lpad_width_       = Config::getDouble("GameCfg.lpad_width");
     game_cfg_max_steps_        = Config::getInt("GameCfg.max_steps");

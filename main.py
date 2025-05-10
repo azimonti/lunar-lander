@@ -6,7 +6,7 @@
 /******************/
 '''
 from mod_lander import LanderVisuals
-from mod_config import palette, cfg, game_cfg, lander_cfg
+from mod_config import palette, game_cfg, lander_cfg, display_cfg
 from mod_nn_play import NeuralNetwork
 import pygame
 import argparse
@@ -29,7 +29,8 @@ c = palette
 
 
 def draw_game(screen: pygame.Surface, logic, visuals: LanderVisuals,
-              sounds: SimpleNamespace, font: pygame.font.Font):
+              sounds: SimpleNamespace, font: pygame.font.Font,
+              mode: str = 'play', current_fitness_to_display: float = 0.0):
     """Renders the current game state."""
     lander_x = logic.x
     lander_y = logic.y
@@ -43,7 +44,8 @@ def draw_game(screen: pygame.Surface, logic, visuals: LanderVisuals,
 
     # Draw terrain
     pygame.draw.rect(screen, c.w, (
-        0, cfg.height - game_cfg.terrain_y, cfg.width, game_cfg.terrain_y))
+        0, display_cfg.height - game_cfg.terrain_y, display_cfg.width,
+        game_cfg.terrain_y))
     # Draw pads
     pygame.draw.rect(screen, c.r, (
         game_cfg.spad_x1, game_cfg.pad_y1, game_cfg.spad_width,
@@ -76,7 +78,7 @@ def draw_game(screen: pygame.Surface, logic, visuals: LanderVisuals,
         play_sound = True
 
     # Play sound if thrusting and sound enabled
-    if cfg.with_sounds and play_sound and not pygame.mixer.get_busy():
+    if display_cfg.with_sounds and play_sound and not pygame.mixer.get_busy():
         sounds.engine_s.play()
 
     # Draw HUD
@@ -88,6 +90,13 @@ def draw_game(screen: pygame.Surface, logic, visuals: LanderVisuals,
     v_text = font.render(f"vx: {abs(vx):0.2f}, vy: {abs(vy):0.2f}", True, c.w)
     screen.blit(v_text, (10, 60))
 
+    # Display fitness if in NN mode and enabled
+    if mode == 'nn_play' and display_cfg.show_fitness:
+        fitness_text_surf = font.render("Fitness: "
+                                        f"{current_fitness_to_display:.2f}",
+                                        True, c.w)
+        screen.blit(fitness_text_surf, (10, 85))
+
     # Update display
     pygame.display.flip()
 
@@ -98,20 +107,20 @@ def game_loop(mode: str, force_left_to_right: bool = False,
     # Configs are now imported at the top level
 
     pygame.init()
-    screen = pygame.display.set_mode((cfg.width, cfg.height))
+    screen = pygame.display.set_mode((display_cfg.width, display_cfg.height))
     pygame.display.set_caption("Lunar Lander")
     clock = pygame.time.Clock()
     font = pygame.font.Font(None, 25)
 
     # Initialize sound
     sounds = SimpleNamespace()
-    if cfg.with_sounds:
+    if display_cfg.with_sounds:
         try:
             pygame.mixer.init()
             sounds.engine_s = pygame.mixer.Sound("assets/wav/rocket.wav")
         except pygame.error as e:
             print(f"Warning: Could not initialize sound: {e}")
-            cfg.with_sounds = False  # Disable sound if init fails
+            display_cfg.with_sounds = False  # Disable sound if init fails
 
     # Initialize Game Logic and Visuals
     # Use the C++ GameLogic implementation
@@ -120,7 +129,7 @@ def game_loop(mode: str, force_left_to_right: bool = False,
 
     # Reset pad positions
     game_cfg.spad_x1, game_cfg.lpad_x1 = generate_random_pad_positions(
-        cfg.width, game_cfg.spad_width, game_cfg.lpad_width,
+        display_cfg.width, game_cfg.spad_width, game_cfg.lpad_width,
         seed=game_cfg.current_seed,
         force_left_to_right=force_left_to_right,
         force_right_to_left=force_right_to_left
@@ -143,11 +152,15 @@ def game_loop(mode: str, force_left_to_right: bool = False,
     has_started = False  # Track if player has initiated movement
     frame_count = 0      # Initialize frame counter for saving images
 
+    # Fitness tracking for NN mode
+    penalty = 0.0
+    current_game_steps = 0
+
     # Pre-allocate NumPy array for state buffer (size 5, dtype float64)
     state_buffer = np.zeros(5, dtype=np.float64)
 
     while running:
-        clock.tick(cfg.fps)
+        clock.tick(display_cfg.fps)
         action = 0  # Default action: Noop
 
         # --- Event Handling ---
@@ -202,6 +215,12 @@ def game_loop(mode: str, force_left_to_right: bool = False,
         if has_started and not game_over:
             # logic.update now writes state into buffer and returns only done
             done = logic.update(action, state_buffer)
+
+            if mode == 'nn_play':
+                step_penalty = logic.calculate_step_penalty(action)
+                penalty += step_penalty
+                current_game_steps += 1
+
             if done:
                 game_over = True
                 # Access public members directly
@@ -209,24 +228,82 @@ def game_loop(mode: str, force_left_to_right: bool = False,
                     print("Landing Successful!")
                 else:
                     print("Crashed!")
-                if cfg.with_sounds and pygame.mixer.get_busy():
+                if display_cfg.with_sounds and pygame.mixer.get_busy():
                     sounds.engine_s.stop()
 
+        if mode == 'nn_play':
+            if game_over:
+                terminal_penalty = logic.calculate_terminal_penalty(
+                    current_game_steps)
+                penalty += terminal_penalty
+
         # --- Rendering ---
-        draw_game(screen, logic, visuals, sounds, font)
+        if mode == 'nn_play':
+            draw_game(screen, logic, visuals, sounds, font,
+                      mode=mode, current_fitness_to_display=penalty)
+        else:
+            draw_game(screen, logic, visuals, sounds, font)
 
         # --- Save Frame if enabled ---
-        if cfg.save_img:
+        if display_cfg.save_img:
             filename = f"frame_{frame_count:06d}.png"
-            full_path = os.path.join(cfg.save_path_img, filename)
+            full_path = os.path.join(display_cfg.save_path_img, filename)
             pygame.image.save(screen, full_path)
             frame_count += 1
 
         # --- Game Over Handling ---
         if game_over:
-            # Display message or wait?
-            pygame.time.delay(1500)  # Pause for 1.5 seconds on game over
-            running = False  # End the loop after game over
+            message_text = ""
+            message_color = c.w
+            if logic.landed_successfully:
+                message_text = "LANDED!"
+                message_color = c.g
+            else:
+                message_text = "CRASHED!"
+                message_color = c.r
+
+            # Render the message
+            msg_font = pygame.font.Font(None, 74)  # Larger font for game over
+            text_surface = msg_font.render(message_text, True, message_color)
+            text_rect = text_surface.get_rect(
+                center=(display_cfg.width // 2, display_cfg.height // 2))
+
+            # Blit message on top of the last drawn frame
+            screen.blit(text_surface, text_rect)
+
+            # Loop for 2 seconds to display message and save frames
+            game_over_display_duration_ms = 2000
+            game_over_loop_start_time = pygame.time.get_ticks()
+
+            while (pygame.time.get_ticks() - game_over_loop_start_time
+                   < game_over_display_duration_ms) and running:
+                # Handle events to allow quitting
+                # during the game over message display
+                for event_game_over in pygame.event.get():
+                    if event_game_over.type == pygame.QUIT:
+                        running = False
+                        break
+                    if event_game_over.type == pygame.KEYDOWN:
+                        if event_game_over.key == pygame.K_q:
+                            running = False
+                            break
+
+                if not running:
+                    break
+
+                pygame.display.flip()
+
+                # Save frame if enabled
+                if display_cfg.save_img:
+                    filename = f"frame_{frame_count:06d}.png"
+                    full_path = os.path.join(
+                            display_cfg.save_path_img, filename)
+                    pygame.image.save(screen, full_path)
+                    frame_count += 1
+
+                clock.tick(display_cfg.fps)  # Maintain FPS
+
+            running = False
 
     pygame.quit()
 
@@ -248,14 +325,14 @@ def main():
         default=False, help="Force the start pad to be on the left")
     args = parser.parse_args()
 
-    if cfg.save_img:
+    if display_cfg.save_img:
         # create directory if it doesn't exist
-        os.makedirs(cfg.save_path_img, exist_ok=True)
+        os.makedirs(display_cfg.save_path_img, exist_ok=True)
         # remove all png files in the directory
-        for f in glob.glob(os.path.join(cfg.save_path_img, '*.png')):
+        for f in glob.glob(os.path.join(display_cfg.save_path_img, '*.png')):
             os.remove(f)
-    elif os.path.exists(cfg.save_path_img):
-        for f in glob.glob(os.path.join(cfg.save_path_img, '*.png')):
+    elif os.path.exists(display_cfg.save_path_img):
+        for f in glob.glob(os.path.join(display_cfg.save_path_img, '*.png')):
             os.remove(f)
 
     if args.mode == 'play':

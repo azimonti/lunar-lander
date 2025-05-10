@@ -54,10 +54,11 @@ lander_cfg_2 = SimpleNamespace(
     img='lander_2'       # image name
 )
 
-cfg = SimpleNamespace(
+display_cfg = SimpleNamespace(
     width=1920 / RETINA_SCALE,     # window resolution width
     height=1080 / RETINA_SCALE,    # window resolution height
     fps=60,                        # frames per second
+    show_fitness=True,             # show neural network fitness
     save_img=False,                # save image
     save_path_img="./data/img",    # save image path
     with_sounds=False,             # use sounds
@@ -72,14 +73,14 @@ game_cfg = SimpleNamespace(
     # --- Game Configuration ---
     # initial position [x, y] (start on takeoff pad, just above terrain)
     random_position=True,       # set randomly the pad
-    x0=np.array([52.0, cfg.height - lander_cfg.height - 52]),
+    x0=np.array([52.0, display_cfg.height - lander_cfg.height - 52]),
     v0=np.array([0.0, 0.0]),    # initial velocity [vx, vy]
     a0=np.array([0.0, 0.0]),    # initial acceleration [ax, ay]
     spad_x1=50,                 # takeoff pad left boundary (x1)
     spad_width=80,              # takeoff pad width
-    lpad_x1=cfg.width - 400,    # landing pad left boundary (x1)
+    lpad_x1=display_cfg.width - 400,  # landing pad left boundary (x1)
     lpad_width=200,             # landing pad width
-    pad_y1=cfg.height - 50,     # landing/ takeoff pad top boundary (y1)
+    pad_y1=display_cfg.height - 50,   # landing/ takeoff pad top boundary (y1)
     pad_height=10,              # landing/ takeoff pad height
     terrain_y=50,               # set the zero of the terrain
     max_vx=0.5,                 # max horizontal speed when landing
@@ -95,9 +96,8 @@ planet_cfg = SimpleNamespace(
 )
 
 nn_config = SimpleNamespace(
-    name="lunar_lander",    # nn name
+    name="lunar_lander",    # neural network name
     hlayers=[16, 32],       # hidden layer structure
-    use_float=False,        # allow switch between c++ float and double
     seed=5247,              # seed
     top_individuals=10,     # number of top individuals to be selected
     population_size=100,    # population size
@@ -106,13 +106,13 @@ nn_config = SimpleNamespace(
     save_nn=True,           # save
     overwrite=False,        # save overwriting
     save_path_nn="./data/",  # save path
-    save_interval=25,       # save every n generations
+    save_interval=100,      # save every n generations
     epochs=1000,            # number of training epochs
     layout_nb=50,           # number of multiple layout
     reset_period=10,        # number of generation where 0 is the best
     left_right_ratio=0.5,   # ratio of left vs right layout
     multithread=True,       # use thread pool
-    random_injection_ratio=0.30  # ratio of random individuals in population
+    random_injection_ratio=0.60  # ratio of random individuals in population
 )
 
 
@@ -141,10 +141,11 @@ def export_text_config():
     config_data.append("LanderCfg.max_fuel = "
                        f"{format_value(active_lander_cfg.max_fuel)}")
 
-    for key, value in vars(cfg).items():
-        config_data.append(f"Cfg.{key} = {format_value(value)}")
+    for key, value in vars(display_cfg).items():
+        config_data.append(f"DisplayCfg.{key} = {format_value(value)}")
 
-    _game_cfg_x0 = np.array([52.0, cfg.height - active_lander_cfg.height - 52])
+    _game_cfg_x0 = np.array([52.0, display_cfg.height -
+                             active_lander_cfg.height - 52])
 
     for key, value in vars(game_cfg).items():
         if key == 'x0':
@@ -152,8 +153,8 @@ def export_text_config():
                                f"{format_value(_game_cfg_x0)}")
         elif key == 'current_seed':
             config_data.append(
-                    f"GameCfg.{key} = "
-                    f"{format_value(0 if value is None else value)}")
+                f"GameCfg.{key} = "
+                f"{format_value(0 if value is None else value)}")
         else:
             config_data.append(f"GameCfg.{key} = {format_value(value)}")
 

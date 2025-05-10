@@ -23,18 +23,8 @@ int main(int argc, char* argv[])
     // Determine the type based on configuration
 #if defined(USE_FLOAT)
     using TDataType = float;
-    if (!Config::getBool("NNConfig.use_float", false)) // Default to false if key not found
-    {
-        std::cout << "Warning: Makefile defines USE_FLOAT, but config NNConfig.use_float is False. Using float."
-                  << std::endl;
-    }
 #else
     using TDataType = double;
-    if (Config::getBool("NNConfig.use_float", false)) // Default to false if key not found
-    {
-        std::cout << "Warning: Makefile does not define USE_FLOAT, but config NNConfig.use_float is True. Using double."
-                  << std::endl;
-    }
 #endif
 
     std::cout << "Using data type: " << (std::is_same_v<TDataType, float> ? "float" : "double") << std::endl;
