@@ -81,7 +81,7 @@ add_executable(main_train_d
     src/main_train.cpp
     src/nn_engine_trainer.cpp
 )
-target_link_libraries(main_train_d PRIVATE game_logic_cpp debug cpp_nn2staticd optimized cpp_nn2static debug config_loaderd optimized config_loader)
+target_link_libraries(main_train_d PRIVATE game_logic_cpp debug cpp_nnstaticd optimized cpp_nnstatic debug config_loaderd optimized config_loader)
 set_target_properties(   main_train_d   PROPERTIES DEBUG_POSTFIX "d"               )
 if(UNITYBUILD)
   set_target_properties( main_train_d PROPERTIES UNITY_BUILD ON                    )
@@ -91,7 +91,7 @@ add_executable(main_train_f
     src/main_train.cpp
     src/nn_engine_trainer.cpp
 )
-target_link_libraries(main_train_f PRIVATE game_logic_cpp debug cpp_nn2staticd optimized cpp_nn2static debug config_loaderd optimized config_loader)
+target_link_libraries(main_train_f PRIVATE game_logic_cpp debug cpp_nnstaticd optimized cpp_nnstatic debug config_loaderd optimized config_loader)
 target_compile_definitions( main_train_f PRIVATE USE_FLOAT                         )
 set_target_properties(   main_train_f   PROPERTIES DEBUG_POSTFIX "d"               )
 if(UNITYBUILD)

@@ -17,7 +17,7 @@ build_dir = os.path.join(cwd, "./externals/ma-libs/build/Release")
 sys.path.append(os.path.realpath(build_dir))
 
 try:
-    import cpp_nn_py2 as cpp_nn_py
+    import cpp_nn_py as cpp_nn_py
 except ModuleNotFoundError as e:
     print(f"Error: {e}")
 
