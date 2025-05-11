@@ -41,6 +41,17 @@ template <typename T> class GameLogicCpp
     T gcfg_terrain_y;
     T ground_level; // Calculated in reset
 
+    // NN Training Penalty Config values
+    T nn_train_sp_dist_factor;
+    T nn_train_sp_action_factor;
+    T nn_train_tp_steps_factor;
+    T nn_train_tp_dist_factor;
+    T nn_train_tp_landed_bonus;
+    T nn_train_tp_fuel_bonus_factor;
+    T nn_train_tp_crashed_penalty;
+    T nn_train_tp_crash_v_mag_factor;
+    T nn_train_tp_no_fuel_penalty;
+
     // --- Private Helper Methods ---
     void apply_action(int action);
     void update_physics();

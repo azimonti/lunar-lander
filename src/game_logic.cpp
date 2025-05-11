@@ -53,32 +53,43 @@ GameLogicCpp<T>::GameLogicCpp(bool no_print_flag_param, const std::string& confi
     if (max_safe_vx == T(0.0)) max_safe_vx = T(1e-6);
     if (max_safe_vy == T(0.0)) max_safe_vy = T(1e-6);
 
-    pcfg_g              = static_cast<T>(Config::getDouble("PlanetCfg.g"));
-    pcfg_mu_x           = static_cast<T>(Config::getDouble("PlanetCfg.mu_x"));
-    pcfg_mu_y           = static_cast<T>(Config::getDouble("PlanetCfg.mu_y"));
+    pcfg_g                         = static_cast<T>(Config::getDouble("PlanetCfg.g"));
+    pcfg_mu_x                      = static_cast<T>(Config::getDouble("PlanetCfg.mu_x"));
+    pcfg_mu_y                      = static_cast<T>(Config::getDouble("PlanetCfg.mu_y"));
 
-    lcfg_width          = static_cast<T>(Config::getDouble("LanderCfg.width"));
-    lcfg_height         = static_cast<T>(Config::getDouble("LanderCfg.height"));
-    lcfg_max_fuel       = static_cast<T>(Config::getInt("LanderCfg.max_fuel"));
+    lcfg_width                     = static_cast<T>(Config::getDouble("LanderCfg.width"));
+    lcfg_height                    = static_cast<T>(Config::getDouble("LanderCfg.height"));
+    lcfg_max_fuel                  = static_cast<T>(Config::getInt("LanderCfg.max_fuel"));
 
-    lpad_x1             = static_cast<T>(Config::getDouble("GameCfg.lpad_x1"));
-    lpad_width          = static_cast<T>(Config::getDouble("GameCfg.lpad_width"));
+    lpad_x1                        = static_cast<T>(Config::getDouble("GameCfg.lpad_x1"));
+    lpad_width                     = static_cast<T>(Config::getDouble("GameCfg.lpad_width"));
 
-    cfg_width           = static_cast<T>(Config::getDouble("DisplayCfg.width"));
-    cfg_height          = static_cast<T>(Config::getDouble("DisplayCfg.height"));
+    cfg_width                      = static_cast<T>(Config::getDouble("DisplayCfg.width"));
+    cfg_height                     = static_cast<T>(Config::getDouble("DisplayCfg.height"));
 
-    spad_width          = static_cast<T>(Config::getDouble("GameCfg.spad_width"));
+    spad_width                     = static_cast<T>(Config::getDouble("GameCfg.spad_width"));
 
-    std::vector<T> x0_T = GameLogicCpp<T>::getConfigVectorAsType("GameCfg.x0");
-    std::vector<T> v0_T = GameLogicCpp<T>::getConfigVectorAsType("GameCfg.v0");
-    std::vector<T> a0_T = GameLogicCpp<T>::getConfigVectorAsType("GameCfg.a0");
+    std::vector<T> x0_T            = GameLogicCpp<T>::getConfigVectorAsType("GameCfg.x0");
+    std::vector<T> v0_T            = GameLogicCpp<T>::getConfigVectorAsType("GameCfg.v0");
+    std::vector<T> a0_T            = GameLogicCpp<T>::getConfigVectorAsType("GameCfg.a0");
 
-    initial_x           = x0_T[0];
-    initial_y           = x0_T[1];
-    initial_vx          = v0_T[0];
-    initial_vy          = v0_T[1];
-    initial_ax          = a0_T[0];
-    initial_ay          = a0_T[1];
+    initial_x                      = x0_T[0];
+    initial_y                      = x0_T[1];
+    initial_vx                     = v0_T[0];
+    initial_vy                     = v0_T[1];
+    initial_ax                     = a0_T[0];
+    initial_ay                     = a0_T[1];
+
+    // Load NN Training Penalty Config values
+    nn_train_sp_dist_factor        = static_cast<T>(Config::getDouble("NNTrainingCfg.sp_dist_factor"));
+    nn_train_sp_action_factor      = static_cast<T>(Config::getDouble("NNTrainingCfg.sp_action_factor"));
+    nn_train_tp_steps_factor       = static_cast<T>(Config::getDouble("NNTrainingCfg.tp_steps_factor"));
+    nn_train_tp_dist_factor        = static_cast<T>(Config::getDouble("NNTrainingCfg.tp_dist_factor"));
+    nn_train_tp_landed_bonus       = static_cast<T>(Config::getDouble("NNTrainingCfg.tp_landed_bonus"));
+    nn_train_tp_fuel_bonus_factor  = static_cast<T>(Config::getDouble("NNTrainingCfg.tp_fuel_bonus_factor"));
+    nn_train_tp_crashed_penalty    = static_cast<T>(Config::getDouble("NNTrainingCfg.tp_crashed_penalty"));
+    nn_train_tp_crash_v_mag_factor = static_cast<T>(Config::getDouble("NNTrainingCfg.tp_crash_v_mag_factor"));
+    nn_train_tp_no_fuel_penalty    = static_cast<T>(Config::getDouble("NNTrainingCfg.tp_no_fuel_penalty"));
 
     recalculate_derived_values(); // Calculate ground level etc.
     reset();                      // Reset game state variables (x, y, fuel, etc.)
@@ -302,32 +313,32 @@ template <typename T> T GameLogicCpp<T>::calculate_step_penalty(int action) cons
     T step_penalty = T(0.0);
     T dist_x       = std::abs(x - landing_pad_center_x);
     T dist_y       = std::abs(y - landing_pad_y);
-    step_penalty += (dist_x + dist_y) * T(0.001);
-    if (action > 0) { step_penalty += T(0.01); }
+    step_penalty += (dist_x + dist_y) * nn_train_sp_dist_factor;
+    if (action > 0) { step_penalty += nn_train_sp_action_factor; }
     return step_penalty;
 }
 
 template <typename T> T GameLogicCpp<T>::calculate_terminal_penalty(int steps_taken) const
 {
     T terminal_penalty = T(0.0);
-    terminal_penalty += static_cast<T>(steps_taken) * T(0.1);
+    terminal_penalty += static_cast<T>(steps_taken) * nn_train_tp_steps_factor;
 
     T dist_x = std::abs(x - landing_pad_center_x);
     T dist_y = std::abs(y - landing_pad_y);
-    terminal_penalty += (dist_x + dist_y) * T(0.5);
+    terminal_penalty += (dist_x + dist_y) * nn_train_tp_dist_factor;
 
     if (landed_successfully)
     {
-        terminal_penalty -= T(1000.0);
-        terminal_penalty -= fuel * T(2.0);
+        terminal_penalty -= nn_train_tp_landed_bonus;
+        terminal_penalty -= fuel * nn_train_tp_fuel_bonus_factor;
     }
     else if (crashed)
     {
-        terminal_penalty += T(500.0);
+        terminal_penalty += nn_train_tp_crashed_penalty;
         T final_v_mag = std::sqrt(vx * vx + vy * vy);
-        terminal_penalty += final_v_mag * T(10.0);
+        terminal_penalty += final_v_mag * nn_train_tp_crash_v_mag_factor;
     }
-    else if (fuel <= T(0.0) && !landed) { terminal_penalty += T(250.0); }
+    else if (fuel <= T(0.0) && !landed) { terminal_penalty += nn_train_tp_no_fuel_penalty; }
 
     if (!landed_successfully)
     {

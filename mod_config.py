@@ -108,11 +108,25 @@ nn_config = SimpleNamespace(
     save_path_nn="./data/",  # save path
     save_interval=100,      # save every n generations
     epochs=1000,            # number of training epochs
-    layout_nb=50,           # number of multiple layout
-    reset_period=10,        # number of generation where 0 is the best
-    left_right_ratio=0.5,   # ratio of left vs right layout
-    multithread=True,       # use thread pool
     random_injection_ratio=0.60  # ratio of random individuals in population
+)
+
+nn_training_cfg = SimpleNamespace(
+    # --- Training process parameters ---
+    layout_nb=50,                # Number of multiple layout
+    reset_period=10,             # Number of generation where 0 is the best
+    left_right_ratio=0.5,        # Ratio of left vs right layout
+    multithread=True,            # Use thread pool
+    # --- Penalty factors for NN training ---
+    sp_dist_factor=0.001,        # Step based on distance to pad
+    sp_action_factor=0.01,       # Step if an action is taken
+    tp_steps_factor=0.1,         # Total steps taken
+    tp_dist_factor=0.5,          # Final distance to pad
+    tp_landed_bonus=1000.0,      # Bonus for successful landing
+    tp_fuel_bonus_factor=2.0,    # Bonus factor for remaining fuel on landing
+    tp_crashed_penalty=500.0,    # Crashing
+    tp_crash_v_mag_factor=10.0,  # Velocity magnitude on crash
+    tp_no_fuel_penalty=250.0     # Running out of fuel without landing
 )
 
 
@@ -163,6 +177,9 @@ def export_text_config():
 
     for key, value in vars(nn_config).items():
         config_data.append(f"NNConfig.{key} = {format_value(value)}")
+
+    for key, value in vars(nn_training_cfg).items():
+        config_data.append(f"NNTrainingCfg.{key} = {format_value(value)}")
 
     file_path = "config.txt"
     try:

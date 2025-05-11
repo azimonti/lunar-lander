@@ -32,15 +32,15 @@ template <typename T> Training::NNEngineTrainer<T>::NNEngineTrainer() : current_
     overwrite_save_         = Config::getBool("NNConfig.overwrite");
     save_interval_          = Config::getInt("NNConfig.save_interval");
     epochs_                 = Config::getInt("NNConfig.epochs");
-    layout_nb_              = Config::getInt("NNConfig.layout_nb");
-    left_right_ratio_       = Config::getDouble("NNConfig.left_right_ratio");
+    layout_nb_              = Config::getInt("NNTrainingCfg.layout_nb");
+    left_right_ratio_       = Config::getDouble("NNTrainingCfg.left_right_ratio");
 
     nn_seed_                = Config::getInt("NNConfig.seed");
     population_size_config_ = Config::getInt("NNConfig.population_size");
     top_individuals_config_ = Config::getInt("NNConfig.top_individuals");
     activation_id_config_   = Config::getInt("NNConfig.activation_id");
     elitism_config_         = Config::getBool("NNConfig.elitism");
-    multithread_            = Config::getBool("NNConfig.multithread");
+    multithread_            = Config::getBool("NNTrainingCfg.multithread");
 
     nn_size_config_.push_back(5); // Input layer: 5 state variables
     std::vector<int> hlayers_vec = Config::getVectorInt("NNConfig.hlayers");
@@ -54,7 +54,7 @@ template <typename T> Training::NNEngineTrainer<T>::NNEngineTrainer() : current_
     game_cfg_max_steps_        = Config::getInt("GameCfg.max_steps");
 
     // Initialize stagnation tracking variables
-    reset_period_config_       = Config::getInt("NNConfig.reset_period");
+    reset_period_config_       = Config::getInt("NNTrainingCfg.reset_period");
     generations_stagnated_     = 0;
     last_best_fitness_overall_ = std::numeric_limits<double>::max();
 
