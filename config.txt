@@ -1,5 +1,5 @@
 # Lunar Lander Configuration File
-# Version 2.1 - Generated on 2025/05/12
+# Version 2.1 - Generated on 2025/05/13
 
 LanderCfg.width = 65.5
 LanderCfg.height = 54.2
@@ -42,7 +42,7 @@ NNConfig.overwrite = false
 NNConfig.save_path_nn = ./data/
 NNConfig.save_interval = 100
 NNConfig.epochs = 1000
-NNConfig.random_injection_ratio = 0.6
+NNConfig.random_injection_ratio = 0.15
 NNTrainingCfg.layout_nb = 50
 NNTrainingCfg.reset_period = 10
 NNTrainingCfg.left_right_ratio = 0.5
@@ -52,7 +52,7 @@ NNTrainingCfg.sp_action_factor = 0.01
 NNTrainingCfg.tp_steps_factor = 0.1
 NNTrainingCfg.tp_dist_factor = 0.5
 NNTrainingCfg.tp_landed_bonus = 0.0
-NNTrainingCfg.tp_landed_lr_bonus = 10000.0
+NNTrainingCfg.tp_landed_lr_bonus = 1000.0
 NNTrainingCfg.tp_fuel_bonus_factor = 2.0
 NNTrainingCfg.tp_crashed_penalty = 500.0
 NNTrainingCfg.tp_crash_v_mag_factor = 10.0

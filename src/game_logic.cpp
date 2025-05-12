@@ -387,6 +387,11 @@ T GameLogicCpp<T>::calculate_terminal_penalty(int steps_taken, size_t direction,
     return terminal_penalty;
 }
 
+template <typename T> int GameLogicCpp<T>::calculate_combined_landing_nb(double total_landing_bonus_lr) const
+{
+    return static_cast<int>(std::round(total_landing_bonus_lr / nn_train_tp_landed_lr_bonus));
+}
+
 // Explicit template instantiation
 template class GameLogicCpp<float>;
 template class GameLogicCpp<double>;

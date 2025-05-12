@@ -108,7 +108,7 @@ nn_config = SimpleNamespace(
     save_path_nn="./data/",  # save path
     save_interval=100,      # save every n generations
     epochs=1000,            # number of training epochs
-    random_injection_ratio=0.60  # ratio of random individuals in population
+    random_injection_ratio=0.15  # ratio of random individuals in population
 )
 
 nn_training_cfg = SimpleNamespace(
@@ -123,7 +123,7 @@ nn_training_cfg = SimpleNamespace(
     tp_steps_factor=0.1,         # Total steps taken
     tp_dist_factor=0.5,          # Final distance to pad
     tp_landed_bonus=0.0,         # Bonus for successful landing
-    tp_landed_lr_bonus=10000.0,  # Bonus for successful landing left and right
+    tp_landed_lr_bonus=1000.0,  # Bonus for successful landing left and right
     tp_fuel_bonus_factor=2.0,    # Bonus factor for remaining fuel on landing
     tp_crashed_penalty=500.0,    # Crashing
     tp_crash_v_mag_factor=10.0,  # Velocity magnitude on crash

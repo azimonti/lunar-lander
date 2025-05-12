@@ -425,7 +425,9 @@ template <typename T> void Training::NNEngineTrainer<T>::train()
                   << "Total: " << format_time(total_elapsed_s.count()) << ")" << std::endl;
         std::cout << std::fixed << std::setprecision(4);
         std::cout << "  Best Avg Fitness: " << best_avg_fitness << " (Member " << sorted_indices[0] << ")" << std::endl;
-        std::cout << "  Best Combined Left to Right Fitness: " << last_gen_lr[sorted_indices[0]] << std::endl;
+        // any game_sims is fine for doing the rounding
+        std::cout << "  Number of Combined Left to Right Landing: "
+                  << game_sims[0].calculate_combined_landing_nb(last_gen_lr[sorted_indices[0]]) << std::endl;
         std::cout << "  Avg Fitness:      " << mean_fitness << std::endl;
         std::cout << std::fixed << std::setprecision(1);
         std::cout << "  Avg Steps/Layout: " << mean_steps << std::endl;
@@ -482,9 +484,9 @@ void Training::NNEngineTrainer<T>::train_generation(const std::vector<LayoutInfo
                 game_sim.reset(static_cast<T>(layout_info.spad_x1), static_cast<T>(layout_info.lpad_x1));
                 game_sim.get_state(state_buffer_local.data(), state_buffer_local.size());
 
-                bool done_local = false;
+                bool done_local                              = false;
                 double accumulated_step_penalty_layout_local = 0.0;
-                int steps_this_layout_local = 0;
+                int steps_this_layout_local                  = 0;
 
                 while (steps_this_layout_local < this->game_cfg_max_steps_)
                 {
