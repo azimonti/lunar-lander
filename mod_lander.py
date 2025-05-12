@@ -8,7 +8,7 @@
 
 import pygame
 
-from mod_config import lander_cfg as lcfg
+from mod_config import lander_cfg
 
 
 class LanderVisuals:
@@ -16,22 +16,22 @@ class LanderVisuals:
 
     def __init__(self):
         # Static properties from config
-        self.width = lcfg.width
-        self.height = lcfg.height
-        self.vf_width = lcfg.vf_width
-        self.vf_height = lcfg.vf_height
-        self.vf_yoffset = lcfg.vf_yoffset
-        self.hf_width = lcfg.hf_width
-        self.hf_height = lcfg.hf_height
-        self.hf_xoffset_l = lcfg.hf_xoffset_l
-        self.hf_yoffset_l = lcfg.hf_yoffset_l
-        self.hf_xoffset_r = lcfg.hf_xoffset_r
-        self.hf_yoffset_r = lcfg.hf_yoffset_r
+        self.width = lander_cfg.width
+        self.height = lander_cfg.height
+        self.vf_width = lander_cfg.vf_width
+        self.vf_height = lander_cfg.vf_height
+        self.vf_yoffset = lander_cfg.vf_yoffset
+        self.hf_width = lander_cfg.hf_width
+        self.hf_height = lander_cfg.hf_height
+        self.hf_xoffset_l = lander_cfg.hf_xoffset_l
+        self.hf_yoffset_l = lander_cfg.hf_yoffset_l
+        self.hf_xoffset_r = lander_cfg.hf_xoffset_r
+        self.hf_yoffset_r = lander_cfg.hf_yoffset_r
 
         # Load assets
         try:
             self.image = pygame.image.load(
-                'assets/png/' + lcfg.img + '.png').convert_alpha()
+                'assets/png/' + lander_cfg.img + '.png').convert_alpha()
             self.vflames = pygame.image.load(
                 'assets/png/vertical_flames.png').convert_alpha()
             self.lflames = pygame.image.load(

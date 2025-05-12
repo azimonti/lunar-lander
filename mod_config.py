@@ -1,11 +1,10 @@
 '''
 /******************/
 /*  mod_config.py */
-/*  Version 2.1   */
-/*   2025/05/09   */
+/*  Version 3.0   */
+/*   2025/05/13   */
 /******************/
 '''
-import datetime
 import numpy as np
 from types import SimpleNamespace
 
@@ -71,11 +70,7 @@ lander_cfg = lander_cfg_1
 
 game_cfg = SimpleNamespace(
     # --- Game Configuration ---
-    # initial position [x, y] (start on takeoff pad, just above terrain)
-    random_position=True,       # set randomly the pad
     x0=np.array([52.0, display_cfg.height - lander_cfg.height - 52]),
-    v0=np.array([0.0, 0.0]),    # initial velocity [vx, vy]
-    a0=np.array([0.0, 0.0]),    # initial acceleration [ax, ay]
     spad_x1=50,                 # takeoff pad left boundary (x1)
     spad_width=80,              # takeoff pad width
     lpad_x1=display_cfg.width - 400,  # landing pad left boundary (x1)
@@ -83,9 +78,6 @@ game_cfg = SimpleNamespace(
     pad_y1=display_cfg.height - 50,   # landing/ takeoff pad top boundary (y1)
     pad_height=10,              # landing/ takeoff pad height
     terrain_y=50,               # set the zero of the terrain
-    max_vx=0.5,                 # max horizontal speed when landing
-    max_vy=2.0,                 # max vertical speed when landing
-    max_steps=5000,             # max steps per simulation episode
     current_seed=None           # Seed used for the current pad positions
 )
 
@@ -97,18 +89,7 @@ planet_cfg = SimpleNamespace(
 
 nn_config = SimpleNamespace(
     name="lunar_lander",    # neural network name
-    hlayers=[16, 32],       # hidden layer structure
-    seed=5247,              # seed
-    top_individuals=10,     # number of top individuals to be selected
-    population_size=100,    # population size
-    elitism=True,           # keep the best individual as-is
-    activation_id=1,        # SIGMOID=0, TANH=1
-    save_nn=True,           # save
-    overwrite=False,        # save overwriting
-    save_path_nn="./data/",  # save path
-    save_interval=100,      # save every n generations
-    epochs=1000,            # number of training epochs
-    random_injection_ratio=0.15  # ratio of random individuals in population
+    save_path_nn="./data/"  # save path
 )
 
 nn_training_cfg = SimpleNamespace(
@@ -131,70 +112,5 @@ nn_training_cfg = SimpleNamespace(
 )
 
 
-def format_value(value):
-    if isinstance(value, bool):
-        return str(value).lower()
-    elif isinstance(value, (list, tuple, np.ndarray)):
-        return ",".join(map(str, value))
-    elif isinstance(value, str):
-        return value  # Strings are written as is
-    elif value is None:
-        return "0"  # Represent None as 0 for current_seed
-    else:
-        return str(value)
-
-
-def export_text_config():
-    active_lander_cfg = lander_cfg
-    config_data = []
-
-    # LanderCfg - only include width, height, max_fuel
-    config_data.append("LanderCfg.width = "
-                       f"{format_value(active_lander_cfg.width)}")
-    config_data.append("LanderCfg.height = "
-                       f"{format_value(active_lander_cfg.height)}")
-    config_data.append("LanderCfg.max_fuel = "
-                       f"{format_value(active_lander_cfg.max_fuel)}")
-
-    for key, value in vars(display_cfg).items():
-        config_data.append(f"DisplayCfg.{key} = {format_value(value)}")
-
-    _game_cfg_x0 = np.array([52.0, display_cfg.height -
-                             active_lander_cfg.height - 52])
-
-    for key, value in vars(game_cfg).items():
-        if key == 'x0':
-            config_data.append(f"GameCfg.{key} = "
-                               f"{format_value(_game_cfg_x0)}")
-        elif key == 'current_seed':
-            config_data.append(
-                f"GameCfg.{key} = "
-                f"{format_value(0 if value is None else value)}")
-        else:
-            config_data.append(f"GameCfg.{key} = {format_value(value)}")
-
-    for key, value in vars(planet_cfg).items():
-        config_data.append(f"PlanetCfg.{key} = {format_value(value)}")
-
-    for key, value in vars(nn_config).items():
-        config_data.append(f"NNConfig.{key} = {format_value(value)}")
-
-    for key, value in vars(nn_training_cfg).items():
-        config_data.append(f"NNTrainingCfg.{key} = {format_value(value)}")
-
-    file_path = "config.txt"
-    try:
-        with open(file_path, "w", newline='\n') as f:
-            current_date = datetime.datetime.now().strftime("%Y/%m/%d")
-            f.write("# Lunar Lander Configuration File\n")
-            f.write(f"# Version {CONFIG_VERSION} - "
-                    f"Generated on {current_date}\n\n")
-            for line in config_data:
-                f.write(line + "\n")
-        print(f"Configuration successfully exported to {file_path}")
-    except Exception as e:
-        print(f"Error exporting configuration: {e}")
-
-
 if __name__ == '__main__':
-    export_text_config()
+    pass

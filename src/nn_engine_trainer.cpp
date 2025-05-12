@@ -426,7 +426,7 @@ template <typename T> void Training::NNEngineTrainer<T>::train()
         std::cout << std::fixed << std::setprecision(4);
         std::cout << "  Best Avg Fitness: " << best_avg_fitness << " (Member " << sorted_indices[0] << ")" << std::endl;
         // any game_sims is fine for doing the rounding
-        std::cout << "  Number of Combined Left to Right Landing: "
+        std::cout << "  Min Number of Landing in Both Directions: "
                   << game_sims[0].calculate_combined_landing_nb(last_gen_lr[sorted_indices[0]]) << std::endl;
         std::cout << "  Avg Fitness:      " << mean_fitness << std::endl;
         std::cout << std::fixed << std::setprecision(1);
