@@ -5,12 +5,14 @@
 /********************/
 
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <cmath>
 #include <iostream>
 #include <numeric>
 #include <stdexcept>
 #include <vector>
+#include "config_loader.h"
 #include "game_logic.h"
 
 // --- Static Helper Function Specializations ---
@@ -86,6 +88,7 @@ GameLogicCpp<T>::GameLogicCpp(bool no_print_flag_param, const std::string& confi
     nn_train_tp_steps_factor       = static_cast<T>(Config::getDouble("NNTrainingCfg.tp_steps_factor"));
     nn_train_tp_dist_factor        = static_cast<T>(Config::getDouble("NNTrainingCfg.tp_dist_factor"));
     nn_train_tp_landed_bonus       = static_cast<T>(Config::getDouble("NNTrainingCfg.tp_landed_bonus"));
+    nn_train_tp_landed_lr_bonus    = static_cast<T>(Config::getDouble("NNTrainingCfg.tp_landed_lr_bonus"));
     nn_train_tp_fuel_bonus_factor  = static_cast<T>(Config::getDouble("NNTrainingCfg.tp_fuel_bonus_factor"));
     nn_train_tp_crashed_penalty    = static_cast<T>(Config::getDouble("NNTrainingCfg.tp_crashed_penalty"));
     nn_train_tp_crash_v_mag_factor = static_cast<T>(Config::getDouble("NNTrainingCfg.tp_crash_v_mag_factor"));
@@ -94,8 +97,6 @@ GameLogicCpp<T>::GameLogicCpp(bool no_print_flag_param, const std::string& confi
     recalculate_derived_values(); // Calculate ground level etc.
     reset();                      // Reset game state variables (x, y, fuel, etc.)
 }
-
-// initialize_from_config and the other constructor are removed.
 
 template <typename T> void GameLogicCpp<T>::recalculate_derived_values()
 {
@@ -345,6 +346,44 @@ template <typename T> T GameLogicCpp<T>::calculate_terminal_penalty(int steps_ta
         T final_v_mag = std::sqrt(vx * vx + vy * vy);
         terminal_penalty += final_v_mag * T(1.0);
     }
+    return terminal_penalty;
+}
+
+template <typename T>
+T GameLogicCpp<T>::calculate_terminal_penalty(int steps_taken, size_t direction,
+                                              std::array<T, 2>& landing_bonus_lr) const
+{
+    assert(direction < 2 && "Direction must be 0 or 1");
+
+    T terminal_penalty = T(0.0);
+    terminal_penalty += static_cast<T>(steps_taken) * nn_train_tp_steps_factor;
+
+    T dist_x = std::abs(x - landing_pad_center_x);
+    T dist_y = std::abs(y - landing_pad_y);
+    terminal_penalty += (dist_x + dist_y) * nn_train_tp_dist_factor;
+
+    if (landed_successfully)
+    {
+        // Apply standard landing bonus and fuel bonus directly to penalty
+        terminal_penalty -= nn_train_tp_landed_bonus;
+        terminal_penalty -= fuel * nn_train_tp_fuel_bonus_factor;
+        // Store the potential directional bonus in the provided array
+        landing_bonus_lr[direction] += nn_train_tp_landed_lr_bonus;
+    }
+    else if (crashed)
+    {
+        terminal_penalty += nn_train_tp_crashed_penalty;
+        T final_v_mag = std::sqrt(vx * vx + vy * vy);
+        terminal_penalty += final_v_mag * nn_train_tp_crash_v_mag_factor;
+    }
+    else if (fuel <= T(0.0) && !landed) { terminal_penalty += nn_train_tp_no_fuel_penalty; }
+
+    if (!landed_successfully)
+    {
+        T final_v_mag = std::sqrt(vx * vx + vy * vy);
+        terminal_penalty += final_v_mag * T(1.0);
+    }
+
     return terminal_penalty;
 }
 

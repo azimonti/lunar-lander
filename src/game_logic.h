@@ -11,7 +11,6 @@
 #include <cstddef>
 #include <utility>
 #include <vector>
-#include "config_loader.h" // Added back for constructor loading
 
 template <typename T> class GameLogicCpp
 {
@@ -47,6 +46,7 @@ template <typename T> class GameLogicCpp
     T nn_train_tp_steps_factor;
     T nn_train_tp_dist_factor;
     T nn_train_tp_landed_bonus;
+    T nn_train_tp_landed_lr_bonus;
     T nn_train_tp_fuel_bonus_factor;
     T nn_train_tp_crashed_penalty;
     T nn_train_tp_crash_v_mag_factor;
@@ -81,6 +81,7 @@ template <typename T> class GameLogicCpp
     // --- Penalty Calculation Methods ---
     T calculate_step_penalty(int action) const;
     T calculate_terminal_penalty(int steps_taken) const;
+    T calculate_terminal_penalty(int steps_taken, size_t direction, std::array<T, 2>& landing_bonus_lr) const;
 
   private:
     // Helper to recalculate derived values after config/pad changes

@@ -7,6 +7,7 @@
 /*     2023/05/08      */
 /***********************/
 
+#include <array> // Added for std::array
 #include <chrono>
 #include <memory>
 #include <random>
@@ -41,14 +42,19 @@ namespace Training
       private:
         // Helper methods (definitions in .cpp)
         std::string format_time(long long total_seconds);
-        void balance_layouts(std::vector<LayoutInfo>& layouts, int num_layouts_to_balance, double target_ltr_ratio);
+        // Updated signature to include layout directions
+        void balance_layouts(std::vector<LayoutInfo>& layouts, std::vector<size_t>& layout_directions,
+                             int num_layouts_to_balance, double target_ltr_ratio);
 
         // The core training logic for a single generation
-        void
-        train_generation(const std::vector<LayoutInfo>& layouts, size_t population_size,
-                         std::vector<double>& fitness_scores, // Output: per member total fitness (double for precision)
-                         std::vector<double>& all_member_steps, // Output: per member total steps (double for precision)
-                         std::vector<GameLogicCpp<T>>& game_sims); // Added: vector of game simulators
+        void train_generation(
+            const std::vector<LayoutInfo>& layouts,
+            const std::vector<size_t>& layout_directions, // Added: Directions for each layout
+            size_t population_size,
+            std::vector<double>& fitness_scores,   // Output: per member total fitness (double for precision)
+            std::vector<double>& last_gen_lr,      // Output: per member left right convergence (double for precision)
+            std::vector<double>& all_member_steps, // Output: per member total steps (double for precision)
+            std::vector<GameLogicCpp<T>>& game_sims); // Added: vector of game simulators
 
         // Member variables
         std::unique_ptr<nn::ANN_MLP_GA<T>> net_;

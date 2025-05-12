@@ -72,8 +72,20 @@ template <typename T> void bind_game_logic_class(py::module& m, const std::strin
         // --- Bind Penalty Calculation Methods ---
         .def("calculate_step_penalty", &Class::calculate_step_penalty, py::arg("action"),
              "Calculates the penalty applied at each step based on state and action.")
-        .def("calculate_terminal_penalty", &Class::calculate_terminal_penalty, py::arg("steps_taken"),
-             "Calculates the terminal penalty/reward based on the final state and steps taken.");
+        // Binding for the original calculate_terminal_penalty (for Python use)
+        .def("calculate_terminal_penalty", static_cast<T (Class::*)(int) const>(&Class::calculate_terminal_penalty),
+             py::arg("steps_taken"),
+             "Calculates the terminal penalty/reward based on the final state and steps taken (original version).")
+        // Binding for the overloaded calculate_terminal_penalty (for L/R bonus tracking, distinct Python name)
+        .def("calculate_terminal_penalty_lr_bonus",
+             [](const Class& self, int steps_taken, size_t direction) -> py::tuple {
+        std::array<T, 2> landing_bonus_lr = {T(0.0), T(0.0)}; // Initialize array
+        // Call the C++ overloaded function
+        T penalty                         = self.calculate_terminal_penalty(steps_taken, direction, landing_bonus_lr);
+        // Return penalty and the (potentially modified) bonus array as a tuple
+        return py::make_tuple(penalty, landing_bonus_lr);
+    }, py::arg("steps_taken"), py::arg("direction"),
+             "Calculates terminal penalty, populating L/R bonus array. Returns (penalty, [bonus_L, bonus_R]).");
 }
 
 PYBIND11_MODULE(lunar_lander_cpp, m)

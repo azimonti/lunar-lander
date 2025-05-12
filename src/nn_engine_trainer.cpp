@@ -189,12 +189,15 @@ template <typename T> std::string Training::NNEngineTrainer<T>::format_time(long
     return oss.str();
 }
 
+// Updated signature and logic to populate layout directions
 template <typename T>
-void Training::NNEngineTrainer<T>::balance_layouts(std::vector<LayoutInfo>& layouts_vec, int num_layouts_to_balance,
+void Training::NNEngineTrainer<T>::balance_layouts(std::vector<LayoutInfo>& layouts_vec,
+                                                   std::vector<size_t>& layout_directions, int num_layouts_to_balance,
                                                    double target_ltr_ratio)
 {
     if (target_ltr_ratio < 0.0 || target_ltr_ratio > 1.0) { target_ltr_ratio = 0.5; }
 
+    // The vector is already sized from its declaration, no need to clear or resize.
     int current_ltr_count = 0;
     for (const auto& layout : layouts_vec)
     {
@@ -244,6 +247,13 @@ void Training::NNEngineTrainer<T>::balance_layouts(std::vector<LayoutInfo>& layo
     {
         if (layout.spad_center < layout.lpad_center) { current_ltr_count++; }
     }
+
+    // After balancing (or even if no balancing occurs), determine and assign the final direction for each layout
+    for (size_t i = 0; i < static_cast<size_t>(num_layouts_to_balance); ++i)
+    {
+        layout_directions[i] =
+            (layouts_vec[i].spad_center < layouts_vec[i].lpad_center) ? 0 : 1; // 0 for LTR, 1 for RTL
+    }
 }
 
 template <typename T> void Training::NNEngineTrainer<T>::train()
@@ -269,6 +279,8 @@ template <typename T> void Training::NNEngineTrainer<T>::train()
 
     std::vector<LayoutInfo> layouts_vec;
     layouts_vec.reserve(static_cast<size_t>(layout_nb_));
+    // Declare and initialize vector for layout directions with its size
+    std::vector<size_t> layout_directions(static_cast<size_t>(layout_nb_));
     [[maybe_unused]] int initial_left_to_right_count = 0;
 
     unsigned int base_seed_for_layouts               = static_cast<unsigned int>(nn_seed_);
@@ -290,7 +302,8 @@ template <typename T> void Training::NNEngineTrainer<T>::train()
         if (layout_item.spad_center < layout_item.lpad_center) { initial_left_to_right_count++; }
     }
 
-    balance_layouts(layouts_vec, layout_nb_, left_right_ratio_);
+    // Pass layout_directions to balance_layouts
+    balance_layouts(layouts_vec, layout_directions, layout_nb_, left_right_ratio_);
 
     int final_ltr_count = 0;
     for (const auto& l : layouts_vec)
@@ -302,6 +315,7 @@ template <typename T> void Training::NNEngineTrainer<T>::train()
 
     size_t population_size = net_->GetPopSize();
     std::vector<double> fitness_scores(population_size);
+    std::vector<double> last_gen_lr(population_size);
     std::vector<double> all_member_steps(population_size);
 
     // Pre-allocate game simulators
@@ -343,7 +357,8 @@ template <typename T> void Training::NNEngineTrainer<T>::train()
                 layouts_vec.push_back(layout_item);
                 if (layout_item.spad_center < layout_item.lpad_center) { initial_ltr_count_after_reset++; }
             }
-            balance_layouts(layouts_vec, layout_nb_, left_right_ratio_);
+            // Pass layout_directions to balance_layouts during reset as well
+            balance_layouts(layouts_vec, layout_directions, layout_nb_, left_right_ratio_);
 
             generations_stagnated_     = 0;
             last_best_fitness_overall_ = std::numeric_limits<double>::max();
@@ -351,7 +366,9 @@ template <typename T> void Training::NNEngineTrainer<T>::train()
 
         std::cout << "\n--- Generation " << actual_gen_display << " ---" << std::endl;
 
-        train_generation(layouts_vec, population_size, fitness_scores, all_member_steps, game_sims);
+        // Pass layout_directions to train_generation
+        train_generation(layouts_vec, layout_directions, population_size, fitness_scores, last_gen_lr, all_member_steps,
+                         game_sims);
 
         std::vector<size_t> sorted_indices(population_size);
         std::iota(sorted_indices.begin(), sorted_indices.end(), 0);
@@ -408,6 +425,7 @@ template <typename T> void Training::NNEngineTrainer<T>::train()
                   << "Total: " << format_time(total_elapsed_s.count()) << ")" << std::endl;
         std::cout << std::fixed << std::setprecision(4);
         std::cout << "  Best Avg Fitness: " << best_avg_fitness << " (Member " << sorted_indices[0] << ")" << std::endl;
+        std::cout << "  Best Combined Left to Right Fitness: " << last_gen_lr[sorted_indices[0]] << std::endl;
         std::cout << "  Avg Fitness:      " << mean_fitness << std::endl;
         std::cout << std::fixed << std::setprecision(1);
         std::cout << "  Avg Steps/Layout: " << mean_steps << std::endl;
@@ -417,15 +435,23 @@ template <typename T> void Training::NNEngineTrainer<T>::train()
     std::cout << "\nC++ Training finished." << std::endl;
 }
 
+// Updated signature
 template <typename T>
-void Training::NNEngineTrainer<T>::train_generation(const std::vector<LayoutInfo>& layouts, size_t population_size,
-                                                    std::vector<double>& fitness_scores,
+void Training::NNEngineTrainer<T>::train_generation(const std::vector<LayoutInfo>& layouts,
+                                                    const std::vector<size_t>& layout_directions, // Added
+                                                    size_t population_size, std::vector<double>& fitness_scores,
+                                                    std::vector<double>& last_gen_lr,
                                                     std::vector<double>& all_member_steps,
                                                     std::vector<GameLogicCpp<T>>& game_sims)
 {
     // Initialize fitness scores and steps to zero for accumulation
     std::fill(fitness_scores.begin(), fitness_scores.end(), 0.0);
+    std::fill(last_gen_lr.begin(), last_gen_lr.end(), 0.0);
     std::fill(all_member_steps.begin(), all_member_steps.end(), 0.0);
+
+    // Vector to store potential left/right landing bonuses for each member
+    // Declared outside the parallel loop to avoid repeated allocation
+    std::vector<std::array<T, 2>> landing_bonuses(population_size); // Holds potential bonus values
 
     tp::thread_pool pool; // Thread pool for managing simulation tasks
 
@@ -433,24 +459,31 @@ void Training::NNEngineTrainer<T>::train_generation(const std::vector<LayoutInfo
     for (size_t member_id = 0; member_id < population_size; ++member_id)
     {
         // Define a simulation task for the current member
-        auto sim_task = [this, member_id, &layouts, &fitness_scores, &all_member_steps, &game_sims]() {
+        auto sim_task = [this, member_id, &layouts, &layout_directions, &fitness_scores, &last_gen_lr,
+                         &all_member_steps, &game_sims, &landing_bonuses]() {
             // Initialize state buffer once per member task
-            std::vector<T> state_buffer_local(5);                   // 5 state variables for the lander
-            GameLogicCpp<T>& game_sim       = game_sims[member_id]; // Use pre-allocated simulator
+            std::vector<T> state_buffer_local(5);             // 5 state variables for the lander
+            GameLogicCpp<T>& game_sim = game_sims[member_id]; // Use pre-allocated simulator
+            // Get reference to this member's landing bonus array and initialize it
+            std::array<T, 2>& member_landing_bonus_lr =
+                landing_bonuses[member_id];           // Reference to the specific member's array
+            member_landing_bonus_lr[0]      = T(0.0); // Initialize potential LTR bonus
+            member_landing_bonus_lr[1]      = T(0.0); // Initialize potential RTL bonus
 
             double total_fitness_for_member = 0.0;
             double total_steps_for_member   = 0.0;
 
             // Inner loop: Iterate over each layout for the current member
-            for (const auto& layout_info : layouts)
+            for (size_t layout_idx = 0; layout_idx < layouts.size(); ++layout_idx) // Use index for direction lookup
             {
+                const auto& layout_info  = layouts[layout_idx];
+                size_t current_direction = layout_directions[layout_idx]; // Get direction for this layout
+
                 game_sim.reset(static_cast<T>(layout_info.spad_x1), static_cast<T>(layout_info.lpad_x1));
                 game_sim.get_state(state_buffer_local.data(), state_buffer_local.size());
 
                 bool done_local = false;
-#if defined(USE_STEP_PENALTY)
                 double accumulated_step_penalty_layout_local = 0.0;
-#endif
                 int steps_this_layout_local = 0;
 
                 while (steps_this_layout_local < this->game_cfg_max_steps_)
@@ -461,28 +494,27 @@ void Training::NNEngineTrainer<T>::train_generation(const std::vector<LayoutInfo
                     done_local = game_sim.update(static_cast<int>(action_idx), state_buffer_local.data(),
                                                  state_buffer_local.size());
 
-#if defined(USE_STEP_PENALTY)
                     accumulated_step_penalty_layout_local +=
                         static_cast<double>(game_sim.calculate_step_penalty(static_cast<int>(action_idx)));
-#endif
                     steps_this_layout_local++;
                     if (done_local) { break; }
                 } // End of simulation steps loop for one layout
 
-#if defined(USE_STEP_PENALTY)
-                double terminal_penalty_layout_local =
-                    static_cast<double>(game_sim.calculate_terminal_penalty(steps_this_layout_local));
-                double fitness_for_layout = accumulated_step_penalty_layout_local + terminal_penalty_layout_local;
-#else
+                // Calculate terminal penalty
+                double fitness_for_layout = static_cast<double>(game_sim.calculate_terminal_penalty(
+                    steps_this_layout_local, current_direction, member_landing_bonus_lr));
 
-                double fitness_for_layout =
-                    static_cast<double>(game_sim.calculate_terminal_penalty(steps_this_layout_local));
-#endif
+                fitness_for_layout += accumulated_step_penalty_layout_local;
                 total_fitness_for_member += fitness_for_layout;
                 total_steps_for_member += static_cast<double>(steps_this_layout_local);
             } // End of layouts loop for one member
+            last_gen_lr[member_id] =
+                static_cast<double>(std::min(member_landing_bonus_lr[0], member_landing_bonus_lr[1]));
 
-            // Store the accumulated fitness and steps for this member
+            // Apply the final L/R bonus by subtracting the minimum of the accumulated directional bonuses
+            total_fitness_for_member -= last_gen_lr[member_id];
+
+            // Store the final accumulated fitness and steps for this member
             // This is thread-safe as each task writes to a unique member_id index.
             fitness_scores[member_id]   = total_fitness_for_member;
             all_member_steps[member_id] = total_steps_for_member;
