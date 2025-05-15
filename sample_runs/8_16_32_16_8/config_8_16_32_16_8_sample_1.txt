@@ -32,7 +32,7 @@ PlanetCfg.mu_y = 0.01                                                    # frict
 
 # Neural Network
 NNConfig.name = lunar_lander                                             # neural network name
-NNConfig.hlayers = 16,16                                                 # hidden layer structure
+NNConfig.hlayers = 8,16,32,16,8                                          # hidden layer structure
 NNConfig.seed = 5247                                                     # seed
 NNConfig.top_individuals = 10                                            # number of top individuals to be selected
 NNConfig.population_size = 100                                           # population size
@@ -43,7 +43,7 @@ NNConfig.overwrite = false                                               # save 
 NNConfig.save_path_nn = ./data/                                          # save path
 NNConfig.save_interval = 250                                             # save every n generations
 NNConfig.epochs = 5000                                                   # number of training epochs
-NNConfig.random_injection_ratio = 0.35                                   # ratio of random individuals in population
+NNConfig.random_injection_ratio = 0.15                                   # ratio of random individuals in population
 
 # Neural Network Training
 NNTrainingCfg.layout_nb = 50                                             # Number of multiple layout
@@ -63,4 +63,4 @@ NNTrainingCfg.tp_landed_lr_bonus = 10000.0                               # Bonus
 NNTrainingCfg.tp_fuel_bonus_factor = 2.0                                 # Bonus factor for remaining fuel on landing
 NNTrainingCfg.tp_crashed_penalty = 0.0                                   # Crashing
 NNTrainingCfg.tp_crash_v_mag_factor = 10.0                               # Velocity magnitude on crash
-NNTrainingCfg.tp_no_fuel_penalty = 20.0                                  # Running out of fuel without landing
+NNTrainingCfg.tp_no_fuel_penalty = 10.0                                  # Running out of fuel without landing

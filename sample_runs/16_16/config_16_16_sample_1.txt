@@ -41,7 +41,7 @@ NNConfig.activation_id = 1                                               # SIGMO
 NNConfig.save_nn = true                                                  # save
 NNConfig.overwrite = false                                               # save overwriting
 NNConfig.save_path_nn = ./data/                                          # save path
-NNConfig.save_interval = 250                                             # save every n generations
+NNConfig.save_interval = 100                                             # save every n generations
 NNConfig.epochs = 5000                                                   # number of training epochs
 NNConfig.random_injection_ratio = 0.35                                   # ratio of random individuals in population
 
@@ -50,12 +50,8 @@ NNTrainingCfg.layout_nb = 50                                             # Numbe
 NNTrainingCfg.reset_period = 10                                          # Number of generation where 0 is the best
 NNTrainingCfg.left_right_ratio = 0.5                                     # Ratio of left vs right layout
 NNTrainingCfg.multithread = true                                         # Use thread pool
-
-# Bonus / Penalties
-# Each Step
 NNTrainingCfg.sp_dist_factor = 0.001                                     # Step based on distance to pad
 NNTrainingCfg.sp_action_factor = 0.01                                    # Step if an action is taken
-# Final
 NNTrainingCfg.tp_steps_factor = 0.1                                      # Total steps taken
 NNTrainingCfg.tp_dist_factor = 0.5                                       # Final distance to pad
 NNTrainingCfg.tp_landed_bonus = 0.0                                      # Bonus for successful landing
