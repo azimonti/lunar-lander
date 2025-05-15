@@ -1,7 +1,7 @@
 /********************/
 /*  game_logic.cpp  */
-/*   Version 1.1    */
-/*    2023/05/10    */
+/*   Version 1.2    */
+/*    2023/05/13    */
 /********************/
 
 #include <algorithm>
@@ -385,11 +385,6 @@ T GameLogicCpp<T>::calculate_terminal_penalty(int steps_taken, size_t direction,
     }
 
     return terminal_penalty;
-}
-
-template <typename T> int GameLogicCpp<T>::calculate_combined_landing_nb(double total_landing_bonus_lr) const
-{
-    return static_cast<int>(std::round(total_landing_bonus_lr / nn_train_tp_landed_lr_bonus));
 }
 
 // Explicit template instantiation

@@ -1,7 +1,7 @@
 /*************************/
 /* nn_engine_trainer.cpp */
-/*      Version 1.1      */
-/*       2023/05/10      */
+/*      Version 1.2      */
+/*       2023/05/13      */
 /*************************/
 
 #include <algorithm>
@@ -47,19 +47,22 @@ template <typename T> Training::NNEngineTrainer<T>::NNEngineTrainer() : current_
     for (int h_size : hlayers_vec) { nn_size_config_.push_back(static_cast<size_t>(h_size)); }
     nn_size_config_.push_back(4); // Output layer: 4 actions
 
-    cfg_width_                 = Config::getDouble("DisplayCfg.width");
-    cfg_height_                = Config::getDouble("DisplayCfg.height");
-    game_cfg_spad_width_       = Config::getDouble("GameCfg.spad_width");
-    game_cfg_lpad_width_       = Config::getDouble("GameCfg.lpad_width");
-    game_cfg_max_steps_        = Config::getInt("GameCfg.max_steps");
+    cfg_width_                   = Config::getDouble("DisplayCfg.width");
+    cfg_height_                  = Config::getDouble("DisplayCfg.height");
+    game_cfg_spad_width_         = Config::getDouble("GameCfg.spad_width");
+    game_cfg_lpad_width_         = Config::getDouble("GameCfg.lpad_width");
+    game_cfg_max_steps_          = Config::getInt("GameCfg.max_steps");
 
     // Initialize stagnation tracking variables
-    reset_period_config_       = Config::getInt("NNTrainingCfg.reset_period");
-    generations_stagnated_     = 0;
-    last_best_fitness_overall_ = std::numeric_limits<double>::max();
+    reset_period_config_         = Config::getInt("NNTrainingCfg.reset_period");
+    generations_stagnated_       = 0;
+    last_best_fitness_overall_   = std::numeric_limits<double>::max();
 
     // Load fitness function parameters
-    random_injection_ratio_    = Config::getDouble("NNConfig.random_injection_ratio");
+    random_injection_ratio_      = Config::getDouble("NNConfig.random_injection_ratio");
+
+    // Fitness display
+    nn_train_tp_landed_lr_bonus_ = static_cast<T>(Config::getDouble("NNTrainingCfg.tp_landed_lr_bonus"));
 
     random_generator_.seed(static_cast<unsigned int>(nn_seed_));
 }
@@ -425,9 +428,8 @@ template <typename T> void Training::NNEngineTrainer<T>::train()
                   << "Total: " << format_time(total_elapsed_s.count()) << ")" << std::endl;
         std::cout << std::fixed << std::setprecision(4);
         std::cout << "  Best Avg Fitness: " << best_avg_fitness << " (Member " << sorted_indices[0] << ")" << std::endl;
-        // any game_sims is fine for doing the rounding
         std::cout << "  Min Number of Landing in Both Directions: "
-                  << game_sims[0].calculate_combined_landing_nb(last_gen_lr[sorted_indices[0]]) << std::endl;
+                  << calculate_combined_landing_nb(last_gen_lr[sorted_indices[0]]) << std::endl;
         std::cout << "  Avg Fitness:      " << mean_fitness << std::endl;
         std::cout << std::fixed << std::setprecision(1);
         std::cout << "  Avg Steps/Layout: " << mean_steps << std::endl;
@@ -468,12 +470,17 @@ void Training::NNEngineTrainer<T>::train_generation(const std::vector<LayoutInfo
             GameLogicCpp<T>& game_sim = game_sims[member_id]; // Use pre-allocated simulator
             // Get reference to this member's landing bonus array and initialize it
             std::array<T, 2>& member_landing_bonus_lr =
-                landing_bonuses[member_id];           // Reference to the specific member's array
-            member_landing_bonus_lr[0]      = T(0.0); // Initialize potential LTR bonus
-            member_landing_bonus_lr[1]      = T(0.0); // Initialize potential RTL bonus
+                landing_bonuses[member_id];                        // Reference to the specific member's array
+            member_landing_bonus_lr[0]                   = T(0.0); // Initialize potential LTR bonus
+            member_landing_bonus_lr[1]                   = T(0.0); // Initialize potential RTL bonus
 
-            double total_fitness_for_member = 0.0;
-            double total_steps_for_member   = 0.0;
+            double total_fitness_for_member              = 0.0;
+            double total_steps_for_member                = 0.0;
+            bool done_local                              = false;
+            double accumulated_step_penalty_layout_local = 0.0;
+            double fitness_for_layout                    = 0.0;
+            int steps_this_layout_local                  = 0;
+            size_t action_idx                            = 0;
 
             // Inner loop: Iterate over each layout for the current member
             for (size_t layout_idx = 0; layout_idx < layouts.size(); ++layout_idx) // Use index for direction lookup
@@ -484,13 +491,14 @@ void Training::NNEngineTrainer<T>::train_generation(const std::vector<LayoutInfo
                 game_sim.reset(static_cast<T>(layout_info.spad_x1), static_cast<T>(layout_info.lpad_x1));
                 game_sim.get_state(state_buffer_local.data(), state_buffer_local.size());
 
-                bool done_local                              = false;
-                double accumulated_step_penalty_layout_local = 0.0;
-                int steps_this_layout_local                  = 0;
+                done_local                            = false;
+                accumulated_step_penalty_layout_local = 0.0;
+                steps_this_layout_local               = 0;
+                action_idx                            = 0;
 
                 while (steps_this_layout_local < this->game_cfg_max_steps_)
                 {
-                    size_t action_idx =
+                    action_idx =
                         this->net_->feedforward(state_buffer_local.data(), state_buffer_local.size(), member_id);
 
                     done_local = game_sim.update(static_cast<int>(action_idx), state_buffer_local.data(),
@@ -503,7 +511,7 @@ void Training::NNEngineTrainer<T>::train_generation(const std::vector<LayoutInfo
                 } // End of simulation steps loop for one layout
 
                 // Calculate terminal penalty
-                double fitness_for_layout = static_cast<double>(game_sim.calculate_terminal_penalty(
+                fitness_for_layout = static_cast<double>(game_sim.calculate_terminal_penalty(
                     steps_this_layout_local, current_direction, member_landing_bonus_lr));
 
                 fitness_for_layout += accumulated_step_penalty_layout_local;
@@ -528,6 +536,12 @@ void Training::NNEngineTrainer<T>::train_generation(const std::vector<LayoutInfo
 
     // Wait for all member tasks to complete if multithreading is enabled
     if (this->multithread_) { pool.wait_for_tasks(); }
+}
+
+template <typename T>
+int Training::NNEngineTrainer<T>::calculate_combined_landing_nb(double total_landing_bonus_lr) const
+{
+    return static_cast<int>(std::round(total_landing_bonus_lr / nn_train_tp_landed_lr_bonus_));
 }
 
 // Explicit template instantiation

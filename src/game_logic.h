@@ -3,8 +3,8 @@
 
 /******************/
 /*  game_logic.h  */
-/*  Version 1.0   */
-/*   2023/05/05   */
+/*  Version 1.2   */
+/*   2023/05/13   */
 /******************/
 
 #include <cmath>
@@ -82,7 +82,6 @@ template <typename T> class GameLogicCpp
     T calculate_step_penalty(int action) const;
     T calculate_terminal_penalty(int steps_taken) const;
     T calculate_terminal_penalty(int steps_taken, size_t direction, std::array<T, 2>& landing_bonus_lr) const;
-    int calculate_combined_landing_nb(double total_landing_bonus_lr) const;
 
   private:
     // Helper to recalculate derived values after config/pad changes

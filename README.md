@@ -9,7 +9,7 @@ A fully-playable Lunar Landing game in Python. Control the lander manually or en
 - Realistic physics simulation,
 - Modular and extensible codebase.
 
-https://github.com/user-attachments/assets/a9feb50e-0872-41a3-84ee-86dfc4e0c948
+https://github.com/user-attachments/assets/a9b05469-6b4c-4e42-b8c9-dafea75d5fee
 
 ## Requirements
 
@@ -64,6 +64,51 @@ To get started with the lunar lander:
   ```
 
 A set of weights is available in `sample_runs`. It is possible to use a sample, copying the desired file to `data/lunar_lander_last.txt`.
+
+## Bonus / Penalty Parameters
+
+These parameters in `config.txt` configure per-step and episode-end reward and penalty shaping for neural network training in a landing environment. They control incentives for minimizing distance to target, efficient action selection, time and resource management, and penalize failure events such as crashing or fuel depletion. Tuning these values directly impacts learned agent behavior and policy optimality:
+
+- `sp_dist_factor`: Multiplies the step-based penalty by current distance to pad,
+- `sp_action_factor`: Multiplies the step-based penalty if an action is taken,
+- `tp_steps_factor`: Scales penalty based on total episode steps,
+- `tp_dist_factor`: Scales penalty based on final distance to the pad,
+- `tp_landed_bonus`: Bonus for landing successfully,
+- `tp_landed_lr_bonus`: Bonus for landing successfully on both direction,
+- `tp_fuel_bonus_factor`: Scales bonus by fuel remaining after landing,
+- `tp_crashed_penalty`: Penalty for crashing,
+- `tp_crash_v_mag_factor`: Additional penalty scaled by crash velocity,
+- `tp_no_fuel_penalty`: Penalty for running out of fuel before landing.
+
+Example:
+
+```python
+# Bonus / Penalties
+# Each Step
+NNTrainingCfg.sp_dist_factor = 0.001                                     # Step based on distance to pad
+NNTrainingCfg.sp_action_factor = 0.01                                    # Step if an action is taken
+# Final
+NNTrainingCfg.tp_steps_factor = 0.1                                      # Total steps taken
+NNTrainingCfg.tp_dist_factor = 0.5                                       # Final distance to pad
+NNTrainingCfg.tp_landed_bonus = 0.0                                      # Bonus for successful landing
+NNTrainingCfg.tp_landed_lr_bonus = 10000.0                               # Bonus for successful combined landing
+NNTrainingCfg.tp_fuel_bonus_factor = 2.0                                 # Bonus factor for remaining fuel on landing
+NNTrainingCfg.tp_crashed_penalty = 500.0                                 # Crashing
+NNTrainingCfg.tp_crash_v_mag_factor = 10.0                               # Velocity magnitude on crash
+NNTrainingCfg.tp_no_fuel_penalty = 500.0                                 # Running out of fuel without landing
+```
+
+The most effective configuration for final rewards uses only a small penalty / bonus for fuel consumption to encourage efficiency, a penalty proportional to crash velocity to enforce soft landings, and a large bonus for combined landings to strongly incentivize proper bidirectional maneuvers and stable touchdown. Other reward or penalty terms are set to zero.
+
+```python
+# Final
+NNTrainingCfg.tp_landed_bonus = 0.0                                      # Bonus for successful landing
+NNTrainingCfg.tp_landed_lr_bonus = 10000.0                               # Bonus for successful combined landing
+NNTrainingCfg.tp_fuel_bonus_factor = 2.0                                 # Bonus factor for remaining fuel on landing
+NNTrainingCfg.tp_crashed_penalty = 0.0                                   # Crashing
+NNTrainingCfg.tp_crash_v_mag_factor = 10.0                               # Velocity magnitude on crash
+NNTrainingCfg.tp_no_fuel_penalty = 10.0                                  # Running out of fuel without landing
+```
 
 ## License
 

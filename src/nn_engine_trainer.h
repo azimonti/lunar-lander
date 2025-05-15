@@ -3,18 +3,18 @@
 
 /***********************/
 /* nn_engine_trainer.h */
-/*    Version 1.0      */
-/*     2023/05/08      */
+/*    Version 1.3      */
+/*     2023/05/13      */
 /***********************/
 
-#include <array> // Added for std::array
+#include <array>
 #include <chrono>
 #include <memory>
 #include <random>
 #include <string>
 #include <vector>
 #include "ann_mlp_ga_v1.h"
-#include "game_logic.h" // Added for GameLogicCpp<T>
+#include "game_logic.h"
 
 namespace Training
 {
@@ -56,6 +56,8 @@ namespace Training
             std::vector<double>& all_member_steps, // Output: per member total steps (double for precision)
             std::vector<GameLogicCpp<T>>& game_sims); // Added: vector of game simulators
 
+        // Calculate combined fitness
+        int calculate_combined_landing_nb(double total_landing_bonus_lr) const;
         // Member variables
         std::unique_ptr<nn::ANN_MLP_GA<T>> net_;
         int current_generation_; // Tracks the number of generations completed
@@ -93,6 +95,7 @@ namespace Training
 
         // Fitness function parameters
         double max_expected_penalty_no_layouts_;
+        int nn_train_tp_landed_lr_bonus_;
 
         // GA parameters
         double random_injection_ratio_;
