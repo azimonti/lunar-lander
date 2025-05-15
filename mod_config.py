@@ -67,7 +67,6 @@ display_cfg = SimpleNamespace(
 # config used
 lander_cfg = lander_cfg_1
 
-
 game_cfg = SimpleNamespace(
     # --- Game Configuration ---
     x0=np.array([52.0, display_cfg.height - lander_cfg.height - 52]),
@@ -91,26 +90,6 @@ nn_config = SimpleNamespace(
     name="lunar_lander",    # neural network name
     save_path_nn="./data/"  # save path
 )
-
-nn_training_cfg = SimpleNamespace(
-    # --- Training process parameters ---
-    layout_nb=50,                # Number of multiple layout
-    reset_period=10,             # Number of generation where 0 is the best
-    left_right_ratio=0.5,        # Ratio of left vs right layout
-    multithread=True,            # Use thread pool
-    # --- Penalty factors for NN training ---
-    sp_dist_factor=0.001,        # Step based on distance to pad
-    sp_action_factor=0.01,       # Step if an action is taken
-    tp_steps_factor=0.1,         # Total steps taken
-    tp_dist_factor=0.5,          # Final distance to pad
-    tp_landed_bonus=0.0,         # Bonus for successful landing
-    tp_landed_lr_bonus=1000.0,  # Bonus for successful landing left and right
-    tp_fuel_bonus_factor=2.0,    # Bonus factor for remaining fuel on landing
-    tp_crashed_penalty=500.0,    # Crashing
-    tp_crash_v_mag_factor=10.0,  # Velocity magnitude on crash
-    tp_no_fuel_penalty=500.0     # Running out of fuel without landing
-)
-
 
 if __name__ == '__main__':
     pass
